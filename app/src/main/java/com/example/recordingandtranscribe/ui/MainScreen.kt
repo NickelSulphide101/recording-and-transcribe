@@ -33,12 +33,25 @@ import com.example.recordingandtranscribe.core.zh
 import java.io.File
 import java.util.Locale
 import kotlin.random.Random
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.animation.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.IntrinsicSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     var recordings by remember { mutableStateOf(audioRecorder.getRecordings()) }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val audioPlayer = remember { AudioPlayer() }
     
@@ -733,9 +746,6 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         )
     }
 }
-
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.FlowRow
 
 private fun formatTime(millis: Int): String {
     val totalSeconds = millis / 1000

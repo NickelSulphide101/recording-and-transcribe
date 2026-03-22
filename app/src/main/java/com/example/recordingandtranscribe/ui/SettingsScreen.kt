@@ -14,8 +14,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.SettingsRepository
-import com.example.recordingandtranscribe.core.zh
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,13 +32,15 @@ fun SettingsScreen(
     val bitrate by settingsRepository.bitrateFlow.collectAsState(initial = 16000)
     val skipSilence by settingsRepository.skipSilenceFlow.collectAsState(initial = false)
     val isBiometricEnabled by settingsRepository.isBiometricEnabledFlow.collectAsState(initial = false)
+    val isDenoisingEnabled by settingsRepository.isDenoisingEnabledFlow.collectAsState(initial = false)
+    val useGeminiNano by settingsRepository.useGeminiNanoFlow.collectAsState(initial = false)
 
     var currentApiKey by remember(apiKey) { mutableStateOf(apiKey ?: "") }
     var currentModelName by remember(modelName) { mutableStateOf(modelName ?: "gemini-1.5-flash") }
     var currentBitrate by remember(bitrate) { mutableIntStateOf(bitrate) }
     var currentSkipSilence by remember(skipSilence) { mutableStateOf(skipSilence) }
+    var currentBiometricEnabled by remember(isBiometricEnabled) { mutableStateOf(isBiometricEnabled) }
     var currentDenoisingEnabled by remember(isDenoisingEnabled) { mutableStateOf(isDenoisingEnabled) }
-    val useGeminiNano by settingsRepository.useGeminiNanoFlow.collectAsState(initial = false)
     var currentUseGeminiNano by remember(useGeminiNano) { mutableStateOf(useGeminiNano) }
     
     var isSaved by remember { mutableStateOf(false) }
@@ -214,6 +217,7 @@ fun SettingsScreen(
             
             FilledTonalButton(
                 onClick = {
+                    coroutineScope.launch {
                         settingsRepository.saveSettings(
                             currentApiKey, 
                             currentModelName, 
@@ -251,6 +255,3 @@ fun SettingsScreen(
         }
     }
 }
-
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll

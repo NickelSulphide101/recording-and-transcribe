@@ -262,7 +262,7 @@ fun TranscriptionScreen(
                             )
                         )
                         .padding(16.dp)
-                ) {
+                    when (selectedTab) {
                         0 -> {
                             Text(
                                 text = metadata.transcript ?: "No transcript available.".zh(context, "暂无转录内容。"),
