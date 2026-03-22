@@ -1,6 +1,7 @@
 package com.example.recordingandtranscribe.ui
 
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
@@ -18,8 +19,26 @@ fun AppNavigation() {
     val context = LocalContext.current
     val settingsRepository = remember { SettingsRepository(context) }
     val audioRecorder = remember { AudioRecorder(context) }
+    
+    val isOnboardingCompleted by settingsRepository.isOnboardingCompletedFlow.collectAsState(initial = null)
 
-    NavHost(navController = navController, startDestination = "main") {
+    // Show nothing until we know if onboarding is completed
+    if (isOnboardingCompleted == null) return
+
+    NavHost(
+        navController = navController, 
+        startDestination = if (isOnboardingCompleted == true) "main" else "onboarding"
+    ) {
+        composable("onboarding") {
+            OnboardingScreen(
+                onFinished = {
+                    navController.navigate("main") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
+                },
+                settingsRepository = settingsRepository
+            )
+        }
         composable("main") {
             MainScreen(
                 navController = navController,

@@ -22,6 +22,7 @@ class SettingsRepository(private val context: Context) {
         val IS_BIOMETRIC_ENABLED = booleanPreferencesKey("is_biometric_enabled")
         val IS_DENOISING_ENABLED = booleanPreferencesKey("is_denoising_enabled")
         val USE_GEMINI_NANO = booleanPreferencesKey("use_gemini_nano")
+        val IS_ONBOARDING_COMPLETED = booleanPreferencesKey("is_onboarding_completed")
     }
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data
@@ -49,6 +50,9 @@ class SettingsRepository(private val context: Context) {
     val useGeminiNanoFlow: Flow<Boolean> = context.dataStore.data
         .map { it[USE_GEMINI_NANO] ?: false }
 
+    val isOnboardingCompletedFlow: Flow<Boolean> = context.dataStore.data
+        .map { it[IS_ONBOARDING_COMPLETED] ?: false }
+
     suspend fun saveSettings(apiKey: String, modelName: String, bitrate: Int? = null, skipSilence: Boolean? = null, isBiometricEnabled: Boolean? = null, isDenoisingEnabled: Boolean? = null, useGeminiNano: Boolean? = null) {
         context.dataStore.edit { settings ->
             settings[GEMINI_API_KEY] = apiKey
@@ -58,6 +62,12 @@ class SettingsRepository(private val context: Context) {
             if (isBiometricEnabled != null) settings[IS_BIOMETRIC_ENABLED] = isBiometricEnabled
             if (isDenoisingEnabled != null) settings[IS_DENOISING_ENABLED] = isDenoisingEnabled
             if (useGeminiNano != null) settings[USE_GEMINI_NANO] = useGeminiNano
+        }
+    }
+
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        context.dataStore.edit { settings ->
+            settings[IS_ONBOARDING_COMPLETED] = completed
         }
     }
 }
