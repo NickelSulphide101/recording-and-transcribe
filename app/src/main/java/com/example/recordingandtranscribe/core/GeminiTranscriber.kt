@@ -7,32 +7,35 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-class GeminiTranscriber(private val apiKey: String) {
-    private val generativeModel = GenerativeModel(
-        modelName = "gemini-1.5-flash",
-        apiKey = apiKey
-    )
+class GeminiTranscriber(private val apiKeys: List<String>, private val modelName: String = "gemini-1.5-flash") {
 
     suspend fun transcribeAudio(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val audioBytes = audioFile.readBytes()
-            // MIME type for m4a (MPEG-4 Audio) is audio/mp4
-            val prompt = "Please transcribe the following audio exactly as spoken. If there are multiple speakers, label them if possible. Just return the transcription."
-            
-            val response = generativeModel.generateContent(
-                content {
-                    blob("audio/mp4", audioBytes)
-                    text(prompt)
+        val keysToTry = apiKeys.shuffled()
+        var lastError: Exception? = null
+        val audioBytes = audioFile.readBytes()
+        val prompt = "Please transcribe the following audio exactly as spoken. If there are multiple speakers, label them if possible. Just return the transcription."
+
+        for (key in keysToTry) {
+            try {
+                val generativeModel = GenerativeModel(
+                    modelName = modelName,
+                    apiKey = key
+                )
+                val response = generativeModel.generateContent(
+                    content {
+                        blob("audio/mp4", audioBytes)
+                        text(prompt)
+                    }
+                )
+                val output = response.text
+                if (output != null) {
+                    return@withContext Result.success(output)
                 }
-            )
-            val output = response.text
-            if (output != null) {
-                Result.success(output)
-            } else {
-                Result.failure(Exception("No output from Gemini"))
+            } catch (e: Exception) {
+                lastError = e
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
+        
+        Result.failure(lastError ?: Exception("All provided API keys failed."))
     }
 }

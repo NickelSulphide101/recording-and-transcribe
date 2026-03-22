@@ -25,6 +25,7 @@ fun TranscriptionScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val apiKey by settingsRepository.apiKeyFlow.collectAsState(initial = null)
+    val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
     
     var isTranscribing by remember { mutableStateOf(false) }
     var transcriptionText by remember { mutableStateOf<String?>(null) }
@@ -64,8 +65,11 @@ fun TranscriptionScreen(
             
             Button(
                 onClick = {
-                    if (apiKey.isNullOrBlank()) {
-                        errorMessage = "Please set your Gemini API Key in Settings first."
+                    val apiKeysStr = apiKey ?: ""
+                    val apiKeysList = apiKeysStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    
+                    if (apiKeysList.isEmpty()) {
+                        errorMessage = "Please set your Gemini API Key(s) in Settings first."
                         return@Button
                     }
                     
@@ -73,14 +77,15 @@ fun TranscriptionScreen(
                     errorMessage = null
                     
                     coroutineScope.launch {
-                        val transcriber = GeminiTranscriber(apiKey!!)
+                        val actualModel = if (modelName.isNullOrBlank()) "gemini-1.5-flash" else modelName!!
+                        val transcriber = GeminiTranscriber(apiKeysList, actualModel)
                         val result = transcriber.transcribeAudio(file)
                         isTranscribing = false
                         
                         result.onSuccess {
                             transcriptionText = it
                         }.onFailure {
-                            errorMessage = it.message ?: "Unknown error occurred"
+                            errorMessage = it.message ?: "All keys failed to transcribe the audio."
                         }
                     }
                 },

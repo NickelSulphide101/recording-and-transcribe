@@ -14,6 +14,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 class SettingsRepository(private val context: Context) {
     companion object {
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val GEMINI_MODEL_NAME = stringPreferencesKey("gemini_model_name")
     }
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data
@@ -21,9 +22,15 @@ class SettingsRepository(private val context: Context) {
             preferences[GEMINI_API_KEY]
         }
 
-    suspend fun saveApiKey(apiKey: String) {
+    val modelNameFlow: Flow<String?> = context.dataStore.data
+        .map { preferences ->
+            preferences[GEMINI_MODEL_NAME]
+        }
+
+    suspend fun saveSettings(apiKey: String, modelName: String) {
         context.dataStore.edit { settings ->
             settings[GEMINI_API_KEY] = apiKey
+            settings[GEMINI_MODEL_NAME] = modelName
         }
     }
 }

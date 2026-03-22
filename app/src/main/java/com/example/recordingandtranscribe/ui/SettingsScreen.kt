@@ -19,7 +19,9 @@ fun SettingsScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val apiKey by settingsRepository.apiKeyFlow.collectAsState(initial = "")
+    val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
     var currentApiKey by remember(apiKey) { mutableStateOf(apiKey ?: "") }
+    var currentModelName by remember(modelName) { mutableStateOf(modelName ?: "gemini-1.5-flash") }
     var isSaved by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -52,7 +54,19 @@ fun SettingsScreen(
                     currentApiKey = it
                     isSaved = false
                 },
-                label = { Text("Gemini API Key") },
+                label = { Text("Gemini API Keys (comma separated)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                maxLines = 5
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = currentModelName,
+                onValueChange = {
+                    currentModelName = it
+                    isSaved = false
+                },
+                label = { Text("Model Name") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -60,7 +74,7 @@ fun SettingsScreen(
             Button(
                 onClick = {
                     coroutineScope.launch {
-                        settingsRepository.saveApiKey(currentApiKey)
+                        settingsRepository.saveSettings(currentApiKey, currentModelName)
                         isSaved = true
                     }
                 },
