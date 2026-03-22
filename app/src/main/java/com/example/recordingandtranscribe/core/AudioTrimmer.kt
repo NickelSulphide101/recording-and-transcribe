@@ -26,7 +26,7 @@ object AudioTrimmer {
             extractor.selectTrack(0)
             val format = extractor.getTrackFormat(0)
             
-            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG)
             val trackIndex = muxer.addTrack(format)
             muxer.start()
 
@@ -36,7 +36,9 @@ object AudioTrimmer {
 
             extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
-            while (true) {
+            var sampleCount = 0
+            val maxSamples = 100000 // Safety limit to avoid infinite loops
+            while (sampleCount < maxSamples) {
                 bufferInfo.offset = 0
                 bufferInfo.size = extractor.readSampleData(buffer, 0)
                 if (bufferInfo.size < 0) {
@@ -49,6 +51,7 @@ object AudioTrimmer {
                 bufferInfo.flags = extractor.sampleFlags
                 muxer.writeSampleData(trackIndex, buffer, bufferInfo)
                 extractor.advance()
+                sampleCount++
             }
 
             muxer.stop()

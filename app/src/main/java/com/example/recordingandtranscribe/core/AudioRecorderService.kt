@@ -14,9 +14,13 @@ import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.example.recordingandtranscribe.MainActivity
 import com.example.recordingandtranscribe.core.zh
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -52,6 +56,7 @@ class AudioRecorderService : Service() {
     private var amplitudeTimer: Timer? = null
     private var silenceStartTime: Long = 0
     private var skipSilenceEnabled = false
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
         super.onCreate()
@@ -71,32 +76,37 @@ class AudioRecorderService : Service() {
     private fun startRecording() {
         if (_isRecording.value) return
 
-        val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.ogg"
-        val outputFile = File(filesDir, fileName)
-        currentFile = outputFile
-
         val settings = SettingsRepository(this)
-        val bitrate = runBlocking { settings.bitrateFlow.first() }
-        skipSilenceEnabled = runBlocking { settings.skipSilenceFlow.first() }
+        
+        serviceScope.launch(Dispatchers.IO) {
+            val bitrate = settings.bitrateFlow.first()
+            skipSilenceEnabled = settings.skipSilenceFlow.first()
+            
+            val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.ogg"
+            val outputFile = File(filesDir, fileName)
+            currentFile = outputFile
 
-        recorder = MediaRecorder(this).apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.OGG)
-            setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
-            setAudioEncodingBitRate(bitrate)
-            setAudioSamplingRate(16000)
-            setOutputFile(outputFile.absolutePath)
+            launch(Dispatchers.Main) {
+                recorder = MediaRecorder(this@AudioRecorderService).apply {
+                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                    setOutputFormat(MediaRecorder.OutputFormat.OGG)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
+                    setAudioEncodingBitRate(bitrate)
+                    setAudioSamplingRate(16000)
+                    setOutputFile(outputFile.absolutePath)
 
-            try {
-                prepare()
-                start()
-                _isRecording.value = true
-                _isPaused.value = false
-                startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-                startAmplitudeMonitoring()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                stopSelf()
+                    try {
+                        prepare()
+                        start()
+                        _isRecording.value = true
+                        _isPaused.value = false
+                        startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                        startAmplitudeMonitoring()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        stopSelf()
+                    }
+                }
             }
         }
     }
@@ -238,6 +248,11 @@ class AudioRecorderService : Service() {
         }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopRecording()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

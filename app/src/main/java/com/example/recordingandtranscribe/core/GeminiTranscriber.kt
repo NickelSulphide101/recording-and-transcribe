@@ -15,8 +15,15 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
     private suspend fun processAudio(audioFile: File, prompt: String): Result<String> = withContext(Dispatchers.IO) {
         val keysToTry = apiKeys.shuffled()
         var lastError: Exception? = null
+        
+        // Memory safety: check file size before reading bytes
+        val maxSizeBytes = 20 * 1024 * 1024 // 20MB limit for direct byte upload
+        if (audioFile.length() > maxSizeBytes) {
+            return@withContext Result.failure(Exception("Audio file is too large for direct AI processing (>20MB). Please try a shorter recording."))
+        }
+        
         val audioBytes = audioFile.readBytes()
-        val mimeType = if (audioFile.name.endsWith(".m4a")) "audio/mp4" else "audio/ogg"
+        val mimeType = if (audioFile.name.endsWith(".m4a")) "audio/mp4" else if (audioFile.name.endsWith(".ogg")) "audio/ogg" else "audio/mpeg"
 
         for (key in keysToTry) {
             try {

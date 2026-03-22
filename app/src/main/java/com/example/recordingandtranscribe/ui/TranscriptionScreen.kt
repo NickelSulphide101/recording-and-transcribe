@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -59,6 +60,13 @@ fun TranscriptionScreen(
     
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val clipboardManager = LocalClipboardManager.current
+    
+    // Separate scroll states for each tab to fix shared scroll position bug
+    val transcriptScroll = rememberScrollState()
+    val summaryScroll = rememberScrollState()
+    val taskScroll = rememberScrollState()
+    val emotionScroll = rememberScrollState()
+    val privacyScroll = rememberScrollState()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -255,24 +263,22 @@ fun TranscriptionScreen(
                         )
                         .padding(16.dp)
                 ) {
-                    val contentScrollState = rememberScrollState()
-                    when (selectedTab) {
                         0 -> {
                             Text(
                                 text = metadata.transcript ?: "No transcript available.".zh(context, "暂无转录内容。"),
-                                modifier = Modifier.verticalScroll(contentScrollState),
+                                modifier = Modifier.verticalScroll(transcriptScroll),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
                         1 -> {
                             Text(
                                 text = metadata.summary ?: "No summary available.".zh(context, "暂无摘要。"),
-                                modifier = Modifier.verticalScroll(contentScrollState),
+                                modifier = Modifier.verticalScroll(summaryScroll),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
                         2 -> {
-                            Column(modifier = Modifier.verticalScroll(contentScrollState)) {
+                            Column(modifier = Modifier.verticalScroll(taskScroll)) {
                                 if (metadata.actionItems.isEmpty()) {
                                     Text("No action items found.".zh(context, "未发现行动事项。"))
                                 } else {
@@ -302,15 +308,30 @@ fun TranscriptionScreen(
                              Text(
                                 metadata.emotionAnalysis ?: "No emotion analysis yet.".zh(context, "暂无情感分析。"),
                                 style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.verticalScroll(contentScrollState)
+                                modifier = Modifier.verticalScroll(emotionScroll)
                             )
                         }
                         4 -> {
-                             val maskedT = if (metadata.isPrivacyMasked) "Privacy masking applied to transcript.".zh(context, "已对转录稿应用隐私脱敏。") else "Privacy masking not applied.".zh(context, "未应用隐私脱敏。")
-                             Text(
-                                maskedT,
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                             Column(modifier = Modifier.verticalScroll(privacyScroll)) {
+                                 Text(
+                                    text = "Privacy Masking (AI Redaction)".zh(context, "隐私脱敏 (AI 脱敏)"),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                 )
+                                 Spacer(modifier = Modifier.height(8.dp))
+                                 val statusColor = if (metadata.isPrivacyMasked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                 val statusText = if (metadata.isPrivacyMasked) 
+                                     "Active: Sensitive info (Names, Phones, Addresses) redacted.".zh(context, "已聚合：敏感信息（姓名、电话、地址）已脱敏。") 
+                                     else "Inactive: Transcript contains original data.".zh(context, "未激活：转录稿包含原始数据。")
+                                 
+                                 Text(statusText, style = MaterialTheme.typography.bodyMedium, color = statusColor)
+                                 Spacer(modifier = Modifier.height(16.dp))
+                                 Text(
+                                     "To apply masking, toggle 'Privacy Masking' in Settings and run 'AI Insights' again.".zh(context, "如需脱敏，请在设置中开启“隐私脱敏”并重新运行“AI 洞察”。"),
+                                     style = MaterialTheme.typography.bodySmall,
+                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                 )
+                             }
                         }
                     }
                     

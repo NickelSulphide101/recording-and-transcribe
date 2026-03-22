@@ -129,15 +129,24 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri ->
             uri?.let {
-                val inputStream = context.contentResolver.openInputStream(it)
-                val fileName = "IMPORT_${System.currentTimeMillis()}.m4a"
-                val destFile = File(context.getExternalFilesDir(null), fileName)
-                inputStream?.use { input ->
-                    destFile.outputStream().use { output ->
-                        input.copyTo(output)
+                coroutineScope.launch(Dispatchers.IO) {
+                    try {
+                        val inputStream = context.contentResolver.openInputStream(it)
+                        val extension = context.contentResolver.getType(it)?.let { type ->
+                            if (type.contains("ogg")) ".ogg" else if (type.contains("mp4")) ".m4a" else ".m4a"
+                        } ?: ".m4a"
+                        val fileName = "IMPORT_${System.currentTimeMillis()}$extension"
+                        val destFile = File(context.getExternalFilesDir(null), fileName)
+                        inputStream?.use { input ->
+                            destFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        recordings = audioRecorder.getRecordings()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
-                recordings = audioRecorder.getRecordings()
             }
         }
     )
