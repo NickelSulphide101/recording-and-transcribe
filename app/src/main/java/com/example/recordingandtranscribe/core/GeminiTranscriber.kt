@@ -64,4 +64,14 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
             resultText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         }
     }
+
+    suspend fun generateEmotionAnalysis(audioFile: File): Result<String> {
+        val prompt = "Analyze the speaker's emotions, tone, and atmosphere from the following audio. Provide a concise, descriptive summary of the sentiment."
+        return processAudio(audioFile, prompt)
+    }
+
+    suspend fun generatePrivacyMaskedTranscript(audioFile: File): Result<String> {
+        val prompt = "Transcribe the following audio, but identify and replace any sensitive personal information (like full names, phone numbers, or addresses) with [REDACTED]. Return the full masked transcript."
+        return processAudio(audioFile, prompt)
+    }
 }

@@ -30,11 +30,15 @@ fun SettingsScreen(
     val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
     val bitrate by settingsRepository.bitrateFlow.collectAsState(initial = 16000)
     val skipSilence by settingsRepository.skipSilenceFlow.collectAsState(initial = false)
+    val isBiometricEnabled by settingsRepository.isBiometricEnabledFlow.collectAsState(initial = false)
 
     var currentApiKey by remember(apiKey) { mutableStateOf(apiKey ?: "") }
     var currentModelName by remember(modelName) { mutableStateOf(modelName ?: "gemini-1.5-flash") }
     var currentBitrate by remember(bitrate) { mutableIntStateOf(bitrate) }
     var currentSkipSilence by remember(skipSilence) { mutableStateOf(skipSilence) }
+    var currentDenoisingEnabled by remember(isDenoisingEnabled) { mutableStateOf(isDenoisingEnabled) }
+    val useGeminiNano by settingsRepository.useGeminiNanoFlow.collectAsState(initial = false)
+    var currentUseGeminiNano by remember(useGeminiNano) { mutableStateOf(useGeminiNano) }
     
     var isSaved by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -92,6 +96,26 @@ fun SettingsScreen(
                         singleLine = true,
                         shape = MaterialTheme.shapes.medium
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Use Gemini Nano (On-Device)".zh(context, "使用 Gemini Nano (本地 AI)"), style = MaterialTheme.typography.bodyLarge)
+                            Text("Requires Android 16 compatible hardware".zh(context, "需要 Android 16 兼容硬件"), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(
+                            checked = currentUseGeminiNano,
+                            onCheckedChange = { 
+                                currentUseGeminiNano = it
+                                isSaved = false
+                            }
+                        )
+                    }
                 }
             }
             
@@ -139,6 +163,50 @@ fun SettingsScreen(
                             }
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Biometric Lock".zh(context, "生物识别锁"), style = MaterialTheme.typography.bodyLarge)
+                            Text("Require fingerprint/face to open app".zh(context, "打开应用时需要指纹或面部识别"), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(
+                            checked = currentBiometricEnabled,
+                            onCheckedChange = { 
+                                currentBiometricEnabled = it 
+                                isSaved = false
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("AI Denoising (Draft)".zh(context, "AI 降噪 (草案)"), style = MaterialTheme.typography.bodyLarge)
+                            Text("Enhance voice by reducing background noise".zh(context, "通过减少背景噪音增强人声"), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(
+                            checked = currentDenoisingEnabled,
+                            onCheckedChange = { 
+                                currentDenoisingEnabled = it 
+                                isSaved = false
+                            }
+                        )
+                    }
                 }
             }
             
@@ -146,8 +214,15 @@ fun SettingsScreen(
             
             FilledTonalButton(
                 onClick = {
-                    coroutineScope.launch {
-                        settingsRepository.saveSettings(currentApiKey, currentModelName, currentBitrate, currentSkipSilence)
+                        settingsRepository.saveSettings(
+                            currentApiKey, 
+                            currentModelName, 
+                            currentBitrate, 
+                            currentSkipSilence,
+                            currentBiometricEnabled,
+                            currentDenoisingEnabled,
+                            currentUseGeminiNano
+                        )
                         isSaved = true
                     }
                 },

@@ -1,22 +1,26 @@
 package com.example.recordingandtranscribe.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -24,7 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import com.example.recordingandtranscribe.core.FileExporter
+import com.example.recordingandtranscribe.core.GeminiNanoTranscriber
 import com.example.recordingandtranscribe.core.GeminiTranscriber
 import com.example.recordingandtranscribe.core.MetadataManager
 import com.example.recordingandtranscribe.core.RecordingMetadata
@@ -44,6 +50,7 @@ fun TranscriptionScreen(
     val coroutineScope = rememberCoroutineScope()
     val apiKey by settingsRepository.apiKeyFlow.collectAsState(initial = null)
     val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
+    val useGeminiNano by settingsRepository.useGeminiNanoFlow.collectAsState(initial = false)
     
     var isProcessing by remember { mutableStateOf(false) }
     var metadata by remember { mutableStateOf(MetadataManager.loadMetadata(file)) }
@@ -131,16 +138,27 @@ fun TranscriptionScreen(
                         errorMessage = null
                         coroutineScope.launch {
                             val transcriber = GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
+                            val nanoTranscriber = GeminiNanoTranscriber(context)
+                            
                             val transcriptResult = transcriber.transcribeAudio(file)
-                            val summaryResult = transcriber.generateSummary(file)
+                            
+                            val summaryResult = if (useGeminiNano) {
+                                nanoTranscriber.generateOnDeviceSummary(transcriptResult.getOrNull() ?: "")
+                            } else {
+                                transcriber.generateSummary(file)
+                            }
                             val actionItemsResult = transcriber.generateActionItems(file)
                             val keywordsResult = transcriber.generateKeywords(file)
+                            val emotionResult = transcriber.generateEmotionAnalysis(file)
+                            val privacyResult = transcriber.generatePrivacyMaskedTranscript(file)
 
-                            val newMetadata = RecordingMetadata(
+                            val newMetadata = metadata.copy(
                                 transcript = transcriptResult.getOrNull() ?: metadata.transcript,
                                 summary = summaryResult.getOrNull() ?: metadata.summary,
                                 actionItems = actionItemsResult.getOrNull() ?: metadata.actionItems,
-                                keywords = keywordsResult.getOrNull() ?: metadata.keywords
+                                keywords = keywordsResult.getOrNull() ?: metadata.keywords,
+                                emotionAnalysis = emotionResult.getOrNull() ?: metadata.emotionAnalysis,
+                                isPrivacyMasked = privacyResult.isSuccess
                             )
                             metadata = newMetadata
                             MetadataManager.saveMetadata(file, newMetadata)
@@ -176,9 +194,10 @@ fun TranscriptionScreen(
             }
 
             // Tabs for different views
-            SecondaryTabRow(
+            ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = MaterialTheme.colorScheme.surface,
+                edgePadding = 16.dp,
                 divider = {}
             ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
@@ -190,9 +209,33 @@ fun TranscriptionScreen(
                 Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
                     Text("Tasks".zh(context, "任务"), modifier = Modifier.padding(12.dp))
                 }
+                Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }) {
+                    Text("Emotion".zh(context, "情感"), modifier = Modifier.padding(12.dp))
+                }
+                Tab(selected = selectedTab == 4, onClick = { selectedTab = 4 }) {
+                    Text("Privacy".zh(context, "隐私"), modifier = Modifier.padding(12.dp))
+                }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Photo Gallery
+            if (metadata.photoUris.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(100.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    metadata.photoUris.forEach { uriString ->
+                        AsyncImage(
+                            model = uriString,
+                            contentDescription = null,
+                            modifier = Modifier.size(100.dp).clip(MaterialTheme.shapes.medium),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             Surface(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 16.dp),
@@ -212,23 +255,24 @@ fun TranscriptionScreen(
                         )
                         .padding(16.dp)
                 ) {
+                    val contentScrollState = rememberScrollState()
                     when (selectedTab) {
                         0 -> {
                             Text(
                                 text = metadata.transcript ?: "No transcript available.".zh(context, "暂无转录内容。"),
-                                modifier = Modifier.verticalScroll(scrollState),
+                                modifier = Modifier.verticalScroll(contentScrollState),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
                         1 -> {
                             Text(
                                 text = metadata.summary ?: "No summary available.".zh(context, "暂无摘要。"),
-                                modifier = Modifier.verticalScroll(scrollState),
+                                modifier = Modifier.verticalScroll(contentScrollState),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
                         2 -> {
-                            Column(modifier = Modifier.verticalScroll(scrollState)) {
+                            Column(modifier = Modifier.verticalScroll(contentScrollState)) {
                                 if (metadata.actionItems.isEmpty()) {
                                     Text("No action items found.".zh(context, "未发现行动事项。"))
                                 } else {
@@ -236,11 +280,37 @@ fun TranscriptionScreen(
                                         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(vertical = 4.dp)) {
                                             Icon(Icons.Default.Assignment, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text(item, style = MaterialTheme.typography.bodyMedium)
+                                            Text(item, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                            IconButton(
+                                                onClick = {
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_INSERT)
+                                                        .setData(android.provider.CalendarContract.Events.CONTENT_URI)
+                                                        .putExtra(android.provider.CalendarContract.Events.TITLE, item)
+                                                        .putExtra(android.provider.CalendarContract.Events.DESCRIPTION, "Added from Recording: ${file.name}")
+                                                    context.startActivity(intent)
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.Event, contentDescription = "Add to Calendar".zh(context, "添加到日历"), modifier = Modifier.size(16.dp))
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
+                        3 -> {
+                             Text(
+                                metadata.emotionAnalysis ?: "No emotion analysis yet.".zh(context, "暂无情感分析。"),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.verticalScroll(contentScrollState)
+                            )
+                        }
+                        4 -> {
+                             val maskedT = if (metadata.isPrivacyMasked) "Privacy masking applied to transcript.".zh(context, "已对转录稿应用隐私脱敏。") else "Privacy masking not applied.".zh(context, "未应用隐私脱敏。")
+                             Text(
+                                maskedT,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
                         }
                     }
                     
@@ -251,6 +321,7 @@ fun TranscriptionScreen(
                                 0 -> metadata.transcript
                                 1 -> metadata.summary
                                 2 -> metadata.actionItems.joinToString("\n")
+                                3 -> metadata.emotionAnalysis
                                 else -> ""
                             }
                             if (!textToCopy.isNullOrBlank()) {

@@ -59,6 +59,12 @@ dependencies {
     // Datastore for settings
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     
+    // Biometric Auth
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    
+    // Image Loading
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    
     // Media for MediaStyle notifications
     implementation("androidx.media:media:1.7.0")
     

@@ -26,6 +26,7 @@ import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.AudioPlayer
 import com.example.recordingandtranscribe.core.AudioRecorder
 import com.example.recordingandtranscribe.core.AudioRecorderService
+import com.example.recordingandtranscribe.core.AudioTrimmer
 import com.example.recordingandtranscribe.core.FileExporter
 import com.example.recordingandtranscribe.core.MetadataManager
 import com.example.recordingandtranscribe.core.zh
@@ -46,7 +47,12 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     val duration by audioPlayer.duration.collectAsState()
     val currentFile by audioPlayer.currentFile.collectAsState()
     
+    val isRecording by AudioRecorderService.isRecording.collectAsState()
+    val isPaused by AudioRecorderService.isPaused.collectAsState()
     val amplitude by AudioRecorderService.amplitude.collectAsState()
+
+    var capturedPhotoUris by remember { mutableStateOf(listOf<String>()) }
+    var tempPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
     var searchQuery by remember { mutableStateOf("") }
     var filterFavorite by remember { mutableStateOf(false) }
@@ -54,6 +60,9 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
 
     var fileToRename by remember { mutableStateOf<File?>(null) }
     var fileToTag by remember { mutableStateOf<File?>(null) }
+    var fileToTrim by remember { mutableStateOf<File?>(null) }
+    var trimStart by remember { mutableStateOf("0") }
+    var trimEnd by remember { mutableStateOf("10") }
     var tagToAdd by remember { mutableStateOf("") }
     var newFileName by remember { mutableStateOf("") }
     
@@ -67,6 +76,13 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     
     LaunchedEffect(isRecording) {
         if (!isRecording) {
+            // Save captured photos to metadata of the just-finished recording
+            val lastFile = AudioRecorderService.currentFile
+            if (lastFile != null && capturedPhotoUris.isNotEmpty()) {
+                val metadata = MetadataManager.loadMetadata(lastFile)
+                MetadataManager.saveMetadata(lastFile, metadata.copy(photoUris = capturedPhotoUris))
+            }
+            capturedPhotoUris = emptyList() // Reset for next session
             recordings = audioRecorder.getRecordings()
         }
     }
@@ -90,6 +106,39 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         contract = ActivityResultContracts.RequestMultiplePermissions(),
         onResult = { permissions -> 
             hasPermissions = permissions.values.all { it == true }
+        }
+    )
+
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture(),
+        onResult = { success ->
+            if (success) {
+                tempPhotoUri?.let { capturedPhotoUris = capturedPhotoUris + it.toString() }
+            }
+        }
+    )
+
+    val pickImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri ->
+            uri?.let { capturedPhotoUris = capturedPhotoUris + it.toString() }
+        }
+    )
+
+    val importAudioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri ->
+            uri?.let {
+                val inputStream = context.contentResolver.openInputStream(it)
+                val fileName = "IMPORT_${System.currentTimeMillis()}.m4a"
+                val destFile = File(context.getExternalFilesDir(null), fileName)
+                inputStream?.use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                recordings = audioRecorder.getRecordings()
+            }
         }
     )
 
@@ -137,6 +186,55 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         )
     }
 
+    if (fileToTrim != null) {
+        AlertDialog(
+            onDismissRequest = { fileToTrim = null },
+            icon = { Icon(Icons.Default.ContentCut, contentDescription = null) },
+            title = { Text("Trim Recording".zh(context, "裁剪录音")) },
+            text = {
+                Column {
+                    Text("Enter start/end time in seconds".zh(context, "输入开始/结束时间(秒)"), style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = trimStart,
+                        onValueChange = { trimStart = it },
+                        label = { Text("Start (sec)".zh(context, "开始(秒)")) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = trimEnd,
+                        onValueChange = { trimEnd = it },
+                        label = { Text("End (sec)".zh(context, "结束(秒)")) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val startUs = (trimStart.toLongOrNull() ?: 0L) * 1_000_000L
+                    val endUs = (trimEnd.toLongOrNull() ?: 10L) * 1_000_000L
+                    val inputFile = fileToTrim!!
+                    val outputFile = File(inputFile.parentFile, "TRIM_${inputFile.name}")
+                    coroutineScope.launch {
+                        val success = AudioTrimmer.trimAudio(inputFile, outputFile, startUs, endUs)
+                        if (success) {
+                            recordings = audioRecorder.getRecordings()
+                        }
+                        fileToTrim = null
+                    }
+                }) {
+                    Text("Trim".zh(context, "裁剪"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { fileToTrim = null }) {
+                    Text("Cancel".zh(context, "取消"))
+                }
+            }
+        )
+    }
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -155,6 +253,9 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         }
                     },
                     actions = {
+                        IconButton(onClick = { importAudioLauncher.launch("audio/*") }) {
+                            Icon(Icons.Default.Upload, contentDescription = "Import".zh(context, "导入"))
+                        }
                         FilledIconButton(onClick = { navController.navigate("settings") }) {
                             Icon(Icons.Default.Settings, contentDescription = "Settings".zh(context, "设置"))
                         }
@@ -224,6 +325,34 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
             ) {
                 if (isRecording) {
                     WaveformVisualizer(amplitude = amplitude, isPaused = isPaused)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        // Photo Capture Button
+                        AssistChip(
+                            onClick = {
+                                val file = File(context.cacheDir, "photo_${System.currentTimeMillis()}.jpg")
+                                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                                tempPhotoUri = uri
+                                takePictureLauncher.launch(uri)
+                            },
+                            label = { Text("Photo".zh(context, "拍照片")) },
+                            leadingIcon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        )
+                        AssistChip(
+                            onClick = { pickImageLauncher.launch("image/*") },
+                            label = { Text("Pick".zh(context, "选图片")) },
+                            leadingIcon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        )
+                    }
+                    
+                    if (capturedPhotoUris.isNotEmpty()) {
+                        Text(
+                            "${capturedPhotoUris.size} photos attached".zh(context, "已附带 ${capturedPhotoUris.size} 张照片"),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         ExtendedFloatingActionButton(
@@ -495,6 +624,16 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                         val m = MetadataManager.loadMetadata(file)
                                                         val pdf = FileExporter.exportToPdf(context, file, m)
                                                         if (pdf != null) FileExporter.shareFile(context, pdf)
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Trim".zh(context, "裁剪")) },
+                                                    leadingIcon = { Icon(Icons.Default.ContentCut, contentDescription = null) },
+                                                    onClick = {
+                                                        expanded = false
+                                                        fileToTrim = file
+                                                        trimStart = "0"
+                                                        trimEnd = "10"
                                                     }
                                                 )
                                                 DropdownMenuItem(
