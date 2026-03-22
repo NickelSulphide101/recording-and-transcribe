@@ -53,32 +53,65 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
         return processAudio(audioFile, prompt)
     }
 
-    suspend fun generateSummary(audioFile: File): Result<String> {
-        val prompt = "Please provide a concise summary of the following audio. Focus on the main topics and key points."
+    private suspend fun processText(textInput: String, prompt: String): Result<String> = withContext(Dispatchers.IO) {
+        val keysToTry = apiKeys.shuffled()
+        var lastError: Exception? = null
+        
+        for (key in keysToTry) {
+            try {
+                val generativeModel = GenerativeModel(
+                    modelName = modelName,
+                    apiKey = key
+                )
+                val response = generativeModel.generateContent(
+                    content {
+                        text(textInput)
+                        text("\n\n---\n\n")
+                        text(prompt)
+                    }
+                )
+                val output = response.text
+                if (output != null) {
+                    return@withContext Result.success(output)
+                }
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        Result.failure(lastError ?: Exception("All provided API keys failed."))
+    }
+
+    suspend fun transcribeAudio(audioFile: File): Result<String> {
+        val prompt = "Please transcribe the following audio exactly as spoken. If there are multiple speakers, label them if possible (e.g., Speaker 1: ...). Just return the transcription."
         return processAudio(audioFile, prompt)
     }
 
-    suspend fun generateActionItems(audioFile: File): Result<List<String>> {
-        val prompt = "Please identify any action items, tasks, or follow-ups mentioned in this audio. Format them as a simple list, one per line."
-        return processAudio(audioFile, prompt).map { resultText ->
+    suspend fun generateSummary(transcript: String): Result<String> {
+        val prompt = "Please provide a concise summary of the above transcript. Focus on the main topics and key points."
+        return processText(transcript, prompt)
+    }
+
+    suspend fun generateActionItems(transcript: String): Result<List<String>> {
+        val prompt = "Please identify any action items, tasks, or follow-ups mentioned in this transcript. Format them as a simple list, one per line."
+        return processText(transcript, prompt).map { resultText ->
             resultText.lines().filter { it.trim().isNotEmpty() }.map { it.trim().removePrefix("- ").removePrefix("* ").trim() }
         }
     }
 
-    suspend fun generateKeywords(audioFile: File): Result<List<String>> {
-        val prompt = "Please list the top 5-10 important keywords or topics mentioned in this audio. Return them separated by commas."
-        return processAudio(audioFile, prompt).map { resultText ->
+    suspend fun generateKeywords(transcript: String): Result<List<String>> {
+        val prompt = "Please list the top 5-10 important keywords or topics mentioned in this transcript. Return them separated by commas."
+        return processText(transcript, prompt).map { resultText ->
             resultText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         }
     }
 
-    suspend fun generateEmotionAnalysis(audioFile: File): Result<String> {
-        val prompt = "Analyze the speaker's emotions, tone, and atmosphere from the following audio. Provide a concise, descriptive summary of the sentiment."
-        return processAudio(audioFile, prompt)
+    suspend fun generateEmotionAnalysis(transcript: String): Result<String> {
+        val prompt = "Analyze the speaker's emotions, tone, and atmosphere from the above transcript. Provide a concise, descriptive summary of the sentiment."
+        return processText(transcript, prompt)
     }
 
-    suspend fun generatePrivacyMaskedTranscript(audioFile: File): Result<String> {
-        val prompt = "Transcribe the following audio, but identify and replace any sensitive personal information (like full names, phone numbers, or addresses) with [REDACTED]. Return the full masked transcript."
-        return processAudio(audioFile, prompt)
+    suspend fun generatePrivacyMaskedTranscript(transcript: String): Result<String> {
+        val prompt = "Identify and replace any sensitive personal information (like full names, phone numbers, or addresses) in the above transcript with [REDACTED]. Return the full masked transcript."
+        return processText(transcript, prompt)
     }
 }

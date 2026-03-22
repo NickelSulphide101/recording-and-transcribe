@@ -26,9 +26,11 @@ object AudioTrimmer {
             extractor.selectTrack(0)
             val format = extractor.getTrackFormat(0)
             
+            var muxerStarted = false
             muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG)
             val trackIndex = muxer.addTrack(format)
             muxer.start()
+            muxerStarted = true
 
             val bufferSize = 1024 * 1024
             val buffer = ByteBuffer.allocate(bufferSize)
@@ -44,24 +46,27 @@ object AudioTrimmer {
                 if (bufferInfo.size < 0) {
                     break
                 }
-                bufferInfo.presentationTimeUs = extractor.sampleTime
-                if (bufferInfo.presentationTimeUs > endTimeUs) {
+                val sampleTime = extractor.sampleTime
+                if (sampleTime > endTimeUs) {
                     break
                 }
+                bufferInfo.presentationTimeUs = sampleTime - startTimeUs
+                if (bufferInfo.presentationTimeUs < 0) bufferInfo.presentationTimeUs = 0
+                
                 bufferInfo.flags = extractor.sampleFlags
                 muxer.writeSampleData(trackIndex, buffer, bufferInfo)
                 extractor.advance()
                 sampleCount++
             }
 
-            muxer.stop()
+            if (muxerStarted) muxer.stop()
             return true
         } catch (e: Exception) {
             Log.e("AudioTrimmer", "Error trimming audio: ${e.message}")
             return false
         } finally {
             extractor?.release()
-            muxer?.release()
+            try { muxer?.release() } catch (e: Exception) {}
         }
     }
 }

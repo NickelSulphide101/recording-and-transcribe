@@ -19,6 +19,7 @@ import com.google.mlkit.genai.summarization.SummarizationResult
 import com.google.mlkit.genai.summarization.SummarizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -88,28 +89,36 @@ class GeminiNanoTranscriber(private val context: Context) {
             }
             
             var finalTranscript = ""
-            recognizer.startRecognition(request).collect { response ->
-                when (response) {
-                    is SpeechRecognizerResponse.FinalTextResponse -> {
-                        finalTranscript = response.text
-                    }
-                    is SpeechRecognizerResponse.PartialTextResponse -> {
-                        // Intermediate results
-                        finalTranscript = response.text
-                    }
-                    is SpeechRecognizerResponse.CompletedResponse -> {
-                        Log.i("GeminiNano", "Recognition completed")
-                    }
-                    is SpeechRecognizerResponse.ErrorResponse -> {
-                        Log.e("GeminiNano", "Recognition error: ${response.e.message}")
+            var error: Exception? = null
+            recognizer.startRecognition(request)
+                .takeWhile { response ->
+                    if (response is SpeechRecognizerResponse.ErrorResponse) {
+                        error = response.e
+                        false
+                    } else if (response is SpeechRecognizerResponse.CompletedResponse) {
+                        false
+                    } else {
+                        true
                     }
                 }
-            }
+                .collect { response ->
+                    when (response) {
+                        is SpeechRecognizerResponse.FinalTextResponse -> {
+                            finalTranscript = response.text
+                        }
+                        is SpeechRecognizerResponse.PartialTextResponse -> {
+                            finalTranscript = response.text
+                        }
+                        else -> {}
+                    }
+                }
             
             recognizer.stopRecognition()
             recognizer.close()
             
-            if (finalTranscript.isNotEmpty()) {
+            if (error != null) {
+                Result.failure(error!!)
+            } else if (finalTranscript.isNotEmpty()) {
                 Result.success(finalTranscript)
             } else {
                 Result.failure(Exception("No transcription result received"))

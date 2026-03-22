@@ -59,7 +59,9 @@ object FileExporter {
         pdfDocument.finishPage(page)
         
         val pdfFile = File(context.cacheDir, "${file.nameWithoutExtension}.pdf")
-        pdfDocument.writeTo(FileOutputStream(pdfFile))
+        FileOutputStream(pdfFile).use { out ->
+            pdfDocument.writeTo(out)
+        }
         pdfDocument.close()
         
         return pdfFile

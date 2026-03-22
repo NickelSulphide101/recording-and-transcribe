@@ -152,7 +152,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                             if (type.contains("ogg")) ".ogg" else if (type.contains("mp4")) ".m4a" else ".m4a"
                         } ?: ".m4a"
                         val fileName = "IMPORT_${System.currentTimeMillis()}$extension"
-                        val destFile = File(context.getExternalFilesDir(null), fileName)
+                        val destFile = File(context.filesDir, fileName)
                         inputStream?.use { input ->
                             destFile.outputStream().use { output ->
                                 input.copyTo(output)
@@ -192,6 +192,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         val oldTxtFile = File(currentF.parentFile, "${currentF.nameWithoutExtension}.txt")
                         if (oldTxtFile.exists()) {
                             oldTxtFile.renameTo(File(currentF.parentFile, "${newFile.nameWithoutExtension}.txt"))
+                        }
+                        val oldJsonFile = File(currentF.parentFile, "${currentF.nameWithoutExtension}.json")
+                        if (oldJsonFile.exists()) {
+                            oldJsonFile.renameTo(File(currentF.parentFile, "${newFile.nameWithoutExtension}.json"))
                         }
                         recordings = audioRecorder.getRecordings()
                         if (currentFile == currentF) {
@@ -677,6 +681,16 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                         expanded = false
                                                         if (currentFile == file) {
                                                             audioPlayer.stop()
+                                                        }
+                                                        mData.photoUris.forEach { uriStr ->
+                                                            try {
+                                                                val uri = android.net.Uri.parse(uriStr)
+                                                                val fileName = uri.lastPathSegment ?: ""
+                                                                if (fileName.startsWith("photo_") && fileName.endsWith(".jpg")) {
+                                                                    val photoFile = File(context.cacheDir, fileName)
+                                                                    if (photoFile.exists()) photoFile.delete()
+                                                                }
+                                                            } catch (e: Exception) { }
                                                         }
                                                         val txtFile = File(file.parentFile, "${file.nameWithoutExtension}.txt")
                                                         if (txtFile.exists()) txtFile.delete()

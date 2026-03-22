@@ -161,18 +161,26 @@ fun TranscriptionScreen(
                                 transcriber?.transcribeAudio(file) ?: Result.failure(Exception("API Key required"))
                             }
                             
+                            val transcriptText = transcriptResult.getOrNull() ?: metadata.transcript ?: ""
+
                             val summaryResult = if (useGeminiNano) {
-                                nanoTranscriber.generateOnDeviceSummary(transcriptResult.getOrNull() ?: "")
+                                nanoTranscriber.generateOnDeviceSummary(transcriptText)
                             } else {
-                                transcriber?.generateSummary(file) ?: Result.failure(Exception("API Key required"))
+                                transcriber?.generateSummary(transcriptText) ?: Result.failure(Exception("API Key required"))
                             }
-                            val actionItemsResult = transcriber?.generateActionItems(file) ?: Result.failure(Exception("API Key required"))
-                            val keywordsResult = transcriber?.generateKeywords(file) ?: Result.failure(Exception("API Key required"))
-                            val emotionResult = transcriber?.generateEmotionAnalysis(file) ?: Result.failure(Exception("API Key required"))
-                            val privacyResult = transcriber?.generatePrivacyMaskedTranscript(file) ?: Result.failure(Exception("API Key required"))
+                            val actionItemsResult = transcriber?.generateActionItems(transcriptText) ?: Result.failure(Exception("API Key required"))
+                            val keywordsResult = transcriber?.generateKeywords(transcriptText) ?: Result.failure(Exception("API Key required"))
+                            val emotionResult = transcriber?.generateEmotionAnalysis(transcriptText) ?: Result.failure(Exception("API Key required"))
+                            val privacyResult = transcriber?.generatePrivacyMaskedTranscript(transcriptText) ?: Result.failure(Exception("API Key required"))
+
+                            val newTranscript = if (privacyResult.isSuccess) {
+                                privacyResult.getOrNull() ?: transcriptText
+                            } else {
+                                transcriptText.ifEmpty { null }
+                            }
 
                             val newMetadata = metadata.copy(
-                                transcript = transcriptResult.getOrNull() ?: metadata.transcript,
+                                transcript = newTranscript,
                                 summary = summaryResult.getOrNull() ?: metadata.summary,
                                 actionItems = actionItemsResult.getOrNull() ?: metadata.actionItems,
                                 keywords = keywordsResult.getOrNull() ?: metadata.keywords,
