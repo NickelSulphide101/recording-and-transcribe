@@ -1,3 +1,5 @@
+package com.example.recordingandtranscribe.core
+
 import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.util.Log
