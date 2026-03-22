@@ -152,17 +152,20 @@ class AudioRecorderService : Service() {
             this, 2, pauseResumeIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val pauseResumeAction = NotificationCompat.Action(
-            if (_isPaused.value) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
-            if (_isPaused.value) "Resume" else "Pause",
-            pendingPauseResumeIntent
-        )
+        val pauseResumeIcon = if (_isPaused.value) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
+        val pauseResumeTitle = if (_isPaused.value) "Resume" else "Pause"
 
-        val stopAction = NotificationCompat.Action(
-            android.R.drawable.ic_media_stop,
+        val pauseResumeAction = NotificationCompat.Action.Builder(
+            pauseResumeIcon,
+            pauseResumeTitle,
+            pendingPauseResumeIntent
+        ).build()
+
+        val stopAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_close_clear_cancel,
             "Stop",
             pendingStopIntent
-        )
+        ).build()
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(if (_isPaused.value) "Recording Paused" else "Recording Audio...")
