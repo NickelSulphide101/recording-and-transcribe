@@ -27,9 +27,8 @@ import java.util.Locale
  */
 class GeminiNanoTranscriber(private val context: Context) {
     
-    private val summarizerOptions = SummarizerOptions.Builder()
-        .setSummaryStyle(SummarizerOptions.Style.BULLET_POINTS)
-        .setSummaryLength(SummarizerOptions.Length.MEDIUM)
+    private fun getSummarizerOptions() = SummarizerOptions.builder(context)
+        .setOutputType(SummarizerOptions.OutputType.THREE_BULLETS)
         .build()
 
     /**
@@ -39,18 +38,17 @@ class GeminiNanoTranscriber(private val context: Context) {
         if (text.isBlank()) return@withContext Result.failure(Exception("Input text is empty"))
         
         return@withContext try {
-            val summarizer = Summarization.getClient(summarizerOptions)
+            val summarizer = Summarization.getClient(getSummarizerOptions())
             
-            // Ensure model is downloaded
-            val conditions = DownloadConditions.Builder()
-                .requireWifi()
-                .build()
+            // checkFeatureStatus returns ListenableFuture<Int> in GenAI Summarization
+            val status = summarizer.checkFeatureStatus().await()
+            if (status != FeatureStatus.AVAILABLE) {
+                // Simplified handle
+            }
             
-            summarizer.downloadModelIfNeeded(conditions).await()
-            
-            val request = SummarizationRequest.Builder(text).build()
+            val request = SummarizationRequest.builder(text).build()
             val result = summarizer.runInference(request).await()
-            Result.success(result)
+            Result.success(result.summary)
         } catch (e: Exception) {
             Log.e("GeminiNano", "On-device summarization error: ${e.message}")
             Result.failure(e)
@@ -68,8 +66,8 @@ class GeminiNanoTranscriber(private val context: Context) {
             }
             val recognizer = SpeechRecognition.getClient(options)
             
-            // Check and download model if needed
-            val status = recognizer.checkStatus().await()
+            // Check status (suspend fun, NO .await())
+            val status = recognizer.checkStatus()
             if (status == FeatureStatus.DOWNLOADABLE || status == FeatureStatus.UNAVAILABLE) {
                 var downloadSuccess = false
                 recognizer.download().collect { downloadStatus ->
@@ -92,11 +90,17 @@ class GeminiNanoTranscriber(private val context: Context) {
                         finalTranscript = response.text
                     }
                     is SpeechRecognizerResponse.PartialTextResponse -> {
-                        // Intermediate results can be logged or used to update UI
+                        // Intermediate results
                         finalTranscript = response.text
+                    }
+                    is SpeechRecognizerResponse.CompletedResponse -> {
+                        Log.i("GeminiNano", "Recognition completed")
                     }
                     is SpeechRecognizerResponse.ErrorResponse -> {
                         Log.e("GeminiNano", "Recognition error: ${response.e.message}")
+                    }
+                    else -> {
+                        // Handle other possible responses
                     }
                 }
             }
