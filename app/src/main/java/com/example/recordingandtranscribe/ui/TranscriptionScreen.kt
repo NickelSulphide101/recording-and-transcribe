@@ -158,7 +158,7 @@ fun TranscriptionScreen(
                             val transcriptResult = if (useGeminiNano) {
                                 nanoTranscriber.transcribeOnDevice(file)
                             } else {
-                                transcriber.transcribeAudio(file)
+                                transcriber?.transcribeAudio(file) ?: Result.failure(Exception("API Key required"))
                             }
                             
                             val summaryResult = if (useGeminiNano) {
