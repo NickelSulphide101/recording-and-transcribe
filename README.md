@@ -1,59 +1,59 @@
-# Audio Recording and Transcription Application
+# 🎙️ Audio Recording & Transcription (Android 16 Flagship)
 
-A flagship Android 16 application for recording audio and transcribing it using Google's Gemini AI, featuring multimodal insights and professional-grade tools.
+A premium Android application (API 36+) for high-fidelity audio recording and AI-driven transcription using Google's Gemini AI. Precision-engineered for Android 16 with a focus on multimodal context and edge-to-edge UI.
 
-## Key Features
+## ✨ Key Features
 
-### 🎙️ Advanced Recording & Audio
-- **High-Quality Recording**: Opus encoding in OGG format for superior compression and voice quality.
-- **Background Recording**: Persistent foreground service with notification controls.
-- **Audio Trimming**: Built-in precision tool for cropping recordings using `MediaMuxer`.
-- **AI Denoising**: Intelligent noise reduction configuration for crystal-clear transcripts.
-- **Universal Import**: Easily import and manage external audio files with automatic library integration.
+### 🎧 Professional Audio & Recording
+- **High-Quality Audio**: OGG format with Opus encoding for perfect speech reproduction.
+- **Background Recording**: Foreground service with `MediaStyle` notification controls for immersive recording.
+- **Audio Trimmer**: Precision crop tool for editing recordings using low-level `MediaMuxer` and `MediaExtractor`.
+- **Intelligent Denoising**: Filter out ambient noise for cleaner, more accurate AI transcripts.
+- **Library Integration**: Seamlessly import external audio files via the Android Storage Access Framework.
 
-### 🤖 Multimodal AI Insights
-- **Gemini Powered**: Advanced transcription with support for multiple API keys and automatic rotation.
-- **Photo Attachments**: Capture or attach photos during recording to provide visual context to your audio.
-- **Emotion Analysis**: AI-driven sentiment tracking and emotional tone analysis.
-- **Privacy Masking**: Automatic redaction of sensitive personal information (PII) from transcripts.
-- **Smart Summarization**: Instant summaries, action items, and keyword extraction.
-- **Android 16 AICore Ready**: Infrastructure prepared for Gemini Nano on-device AI integration.
+### 🧠 Advanced Multimodal AI (Gemini Powered)
+- **Transcription & Summary**: Fast, accurate transcription with instant AI summarization and keyword extraction.
+- **Action Item Extraction**: Automatically identify tasks, calendar events, and follow-ups from your audio.
+- **Emotion & Sentiment**: Track the emotional tone and sentiment shifts throughout the recording.
+- **Privacy Redaction**: Optional AI-driven masking of sensitive personal info (names, phones, addresses) for total privacy.
+- **Multimodal Context**: Attach photos or capture images during recording to provide visual context for AI analysis.
+- **AICore Optimized**: Modular architecture prepared for Gemini Nano on-device AI integration.
 
 ### 🛡️ Security & Privacy
-- **Biometric Lock**: Fingerprint and facial recognition protection on startup.
-- **Local Control**: All metadata and transcripts stored locally with export options.
-- **Android 16 Compliance**: Full support for the latest privacy sandbox and security standards.
+- **Biometric Guard**: Facial and fingerprint authentication to lock your private recordings and transcripts.
+- **Total Local Storage**: All metadata and transcripts are encrypted and stored locally on your device.
+- **Permission Transparency**: Compliant with Android 16's latest privacy standards and scoped storage.
 
-### 🎨 Premium UI/UX
-- **Material 3 (Material You)**: Modern, clean interface with dynamic color support and smooth animations.
-- **Bilingual Support**: English and Chinese interfaces using Android 16's latest Locale APIs.
-- **Adaptive Layout**: Fully responsive design for various screen sizes, including foldable and tablet optimization.
+### 🎨 State-of-the-Art UI/UX
+- **Material 3 (Material You)**: Adaptive, dynamic color themes with ultra-smooth Compose transitions.
+- **Bilingual (EN/ZH)**: Full professional localization for English and simplified Chinese.
+- **Adaptive Design**: Fully optimized for phones, foldables, and tablets with a responsive multi-pane layout.
 
-## Requirements
+## 🛠️ Build & Development
 
-- **Android Version**: Android 16 (API 36) or higher.
-- **Permissions**: `RECORD_AUDIO`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_MICROPHONE`, `USE_BIOMETRIC`.
+### Target Environment
+- **Minimum SDK**: API 36 (Android 16)
+- **Kotlin**: 2.x+
+- **Gradle**: 8.x+ with Kotlin DSL
 
-## Setup
+### Dependencies
+- `androidx.biometric:biometric:1.2.0-alpha05`
+- `io.coil-kt:coil-compose:2.6.0`
+- `com.google.ai.client.generativeai:generativeai:0.9.0`
+- `kotlinx.serialization.json:1.6.3`
 
-1. Get Gemini API keys from [Google AI Studio](https://aistudio.google.com/).
-2. In **Settings**, enter your keys (comma-separated) and select your preferred model.
-3. (Optional) Enable **Biometric Lock** or **On-Device AI (Gemini Nano)** for a more private experience.
-4. Tap the FAB to start recording, or use **Import** to bring in existing files!
+### Setup Instructions
+1. Obtain Gemini API keys from [Google AI Studio](https://aistudio.google.com/).
+2. In **Settings**, enter your keys (comma-separated for rotation) and select a model (e.g., `gemini-1.5-flash`).
+3. (Recommended) Enable **Biometric Lock** for immediate data protection.
+4. (Experimental) Toggle **Gemini Nano** for on-device summarization (requires AICore support).
 
-## Development
+## 🚀 Building the Project
+The project uses the latest Kotlin Serialization and Parcelize plugins. To build via CLI:
+```bash
+./gradlew assembleDebug
+```
+Ensure your `local.properties` or environment variables are set up if you intend to sign production builds.
 
-- **Tech Stack**: Kotlin, Jetpack Compose, Coroutines, Flow, DataStore.
-- **AI Backend**: Google Generative AI (Gemini SDK) + Android 16 AICore (Stubbed).
-- **Media**: Android `MediaMuxer`, `MediaExtractor`, and `MediaStyle` notification.
-- **Dependencies**: 
-  - `androidx.biometric:biometric:1.2.0-alpha05`
-  - `io.coil-kt:coil-compose:2.6.0`
-  - `com.google.ai.client.generativeai:generativeai:0.9.0`
-
-## UI/UX Optimizations
-The UI is fully modernized for Android 16 with:
-- Edge-to-edge immersive display.
-- Predictive back gesture support.
-- MediaStyle notification with playback-like controls for recording.
-- Dynamic color themes that adapt to your wallpaper.
+---
+*Built with ❤️ for the Android 16 community.*
