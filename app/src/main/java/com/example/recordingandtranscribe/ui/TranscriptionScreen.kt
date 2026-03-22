@@ -151,7 +151,11 @@ fun TranscriptionScreen(
                             val transcriber = GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
                             val nanoTranscriber = GeminiNanoTranscriber(context)
                             
-                            val transcriptResult = transcriber.transcribeAudio(file)
+                            val transcriptResult = if (useGeminiNano) {
+                                nanoTranscriber.transcribeOnDevice(file)
+                            } else {
+                                transcriber.transcribeAudio(file)
+                            }
                             
                             val summaryResult = if (useGeminiNano) {
                                 nanoTranscriber.generateOnDeviceSummary(transcriptResult.getOrNull() ?: "")

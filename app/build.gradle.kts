@@ -72,8 +72,12 @@ dependencies {
     // Media for MediaStyle notifications
     implementation("androidx.media:media:1.7.0")
     
-    // Generative AI SDK
+    // Generative AI SDK (Online)
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+
+    // ML Kit Generative AI (On-Device Gemini Nano)
+    implementation("com.google.android.gms:play-services-mlkit-summarization:16.0.0-beta1")
+    implementation("com.google.android.gms:play-services-mlkit-speech-recognition:16.0.0-beta1")
 
     // ViewModel implementation
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
