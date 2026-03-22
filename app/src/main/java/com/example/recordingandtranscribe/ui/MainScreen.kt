@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -662,7 +662,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                 )
                                                 DropdownMenuItem(
                                                     text = { Text("Tags".zh(context, "标签")) },
-                                                    leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null) },
                                                     onClick = {
                                                         expanded = false
                                                         fileToTag = file
@@ -701,7 +701,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         @OptIn(ExperimentalLayoutApi::class)
         AlertDialog(
             onDismissRequest = { fileToTag = null },
-            icon = { Icon(Icons.Default.Label, contentDescription = null) },
+            icon = { Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null) },
             title = { Text("Manage Tags".zh(context, "管理标签")) },
             text = {
                 val currentMeta = MetadataManager.loadMetadata(fileToTag!!)

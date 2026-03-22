@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Event
@@ -288,7 +288,7 @@ fun TranscriptionScreen(
                                 } else {
                                     metadata.actionItems.forEach { item ->
                                         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(vertical = 4.dp)) {
-                                            Icon(Icons.Default.Assignment, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                            Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(item, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                             IconButton(
