@@ -48,11 +48,6 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
         Result.failure(lastError ?: Exception("All provided API keys failed."))
     }
 
-    suspend fun transcribeAudio(audioFile: File): Result<String> {
-        val prompt = "Please transcribe the following audio exactly as spoken. If there are multiple speakers, label them if possible (e.g., Speaker 1: ...). Just return the transcription."
-        return processAudio(audioFile, prompt)
-    }
-
     private suspend fun processText(textInput: String, prompt: String): Result<String> = withContext(Dispatchers.IO) {
         val keysToTry = apiKeys.shuffled()
         var lastError: Exception? = null
