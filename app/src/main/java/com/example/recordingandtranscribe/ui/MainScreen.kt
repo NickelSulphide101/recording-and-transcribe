@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,8 +42,9 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
 
     var fileToRename by remember { mutableStateOf<File?>(null) }
     var newFileName by remember { mutableStateOf("") }
+    
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    // When navigating away, stop playing.
     DisposableEffect(Unit) {
         onDispose {
             audioPlayer.stop()
@@ -66,17 +68,20 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     if (fileToRename != null) {
         AlertDialog(
             onDismissRequest = { fileToRename = null },
+            icon = { Icon(Icons.Default.Edit, contentDescription = null) },
             title = { Text("Rename Recording") },
             text = {
                 OutlinedTextField(
                     value = newFileName,
                     onValueChange = { newFileName = it },
                     label = { Text("New file name") },
-                    singleLine = true
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                FilledTonalButton(onClick = {
                     val currentF = fileToRename!!
                     val finalName = if (newFileName.endsWith(".m4a")) newFileName else "$newFileName.m4a"
                     val newFile = File(currentF.parentFile, finalName)
@@ -86,7 +91,6 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                             oldTxtFile.renameTo(File(currentF.parentFile, "${newFile.nameWithoutExtension}.txt"))
                         }
                         recordings = audioRecorder.getRecordings()
-                        // Stop playback if we renamed the currently playing file, as path changes
                         if (currentFile == currentF) {
                             audioPlayer.stop()
                         }
@@ -105,18 +109,20 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text("Recordings") },
+            LargeTopAppBar(
+                title = { Text("Recordings", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { navController.navigate("settings") }) {
+                    FilledIconButton(onClick = { navController.navigate("settings") }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
-                }
+                },
+                scrollBehavior = scrollBehavior
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = {
                     if (!hasPermission) {
                         permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -134,30 +140,34 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         }
                     }
                 },
-                containerColor = if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Icon(
-                    imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                    contentDescription = if (isRecording) "Stop Recording" else "Start Recording"
-                )
-            }
+                containerColor = if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                icon = { Icon(if (isRecording) Icons.Default.Stop else Icons.Default.Mic, contentDescription = null) },
+                text = { Text(if (isRecording) "Stop Recording" else "Record Audio") },
+                expanded = true
+            )
         },
+        floatingActionButtonPosition = FabPosition.Center,
         bottomBar = {
             if (currentFile != null) {
-                BottomAppBar {
+                BottomAppBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = currentFile.name,
+                            text = currentFile!!.name,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(formatTime(progress), style = MaterialTheme.typography.bodySmall)
+                            Text(formatTime(progress), style = MaterialTheme.typography.labelMedium)
                             Slider(
                                 value = if (duration > 0) progress.toFloat() / duration else 0f,
                                 onValueChange = { percent ->
@@ -166,9 +176,14 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                 },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(horizontal = 8.dp)
+                                    .padding(horizontal = 12.dp),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
                             )
-                            Text(formatTime(duration), style = MaterialTheme.typography.bodySmall)
+                            Text(formatTime(duration), style = MaterialTheme.typography.labelMedium)
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -192,10 +207,14 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                 Icon(Icons.Default.FastRewind, contentDescription = "Rewind 10s")
                             }
                             
-                            FilledIconButton(onClick = { audioPlayer.togglePlayPause() }) {
+                            FilledIconButton(
+                                onClick = { audioPlayer.togglePlayPause() },
+                                modifier = Modifier.size(56.dp)
+                            ) {
                                 Icon(
                                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = "Play/Pause"
+                                    contentDescription = "Play/Pause",
+                                    modifier = Modifier.size(32.dp)
                                 )
                             }
                             
@@ -226,73 +245,111 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         ) {
             if (recordings.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No recordings yet. Tap the mic to start.")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Mic,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "No recordings found",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Tap the record button below to begin.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 88.dp) // Leave space for FAB
+                ) {
                     items(recordings) { file ->
                         var expanded by remember { mutableStateOf(false) }
 
-                        ListItem(
-                            headlineContent = { Text(file.name, fontWeight = FontWeight.Bold) },
-                            supportingContent = { Text("Size: ${file.length() / 1024} KB") },
-                            modifier = Modifier.clickable {
-                                navController.navigate("transcribe/${file.name}")
-                            },
-                            leadingContent = {
-                                if (currentFile == file && isPlaying) {
-                                    Icon(Icons.Default.SurroundSound, contentDescription = "Playing", tint = MaterialTheme.colorScheme.primary)
-                                }
-                            },
-                            trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = {
-                                        if (currentFile == file) {
-                                            audioPlayer.togglePlayPause()
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            onClick = { navController.navigate("transcribe/${file.name}") },
+                            shape = MaterialTheme.shapes.large,
+                            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+                        ) {
+                            ListItem(
+                                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                                headlineContent = { Text(file.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = { Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodySmall) },
+                                leadingContent = {
+                                    Box(
+                                        modifier = Modifier.size(48.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (currentFile == file && isPlaying) {
+                                            Icon(Icons.Default.GraphicEq, contentDescription = "Playing", tint = MaterialTheme.colorScheme.primary)
                                         } else {
-                                            audioPlayer.playFile(file)
+                                            Icon(Icons.Default.AudioFile, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
-                                    }) {
-                                        Icon(
-                                            if (currentFile == file && isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                            contentDescription = "Play/Pause"
-                                        )
                                     }
-                                    Box {
-                                        IconButton(onClick = { expanded = true }) {
-                                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                },
+                                trailingContent = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = {
+                                            if (currentFile == file) {
+                                                audioPlayer.togglePlayPause()
+                                            } else {
+                                                audioPlayer.playFile(file)
+                                            }
+                                        }) {
+                                            Icon(
+                                                if (currentFile == file && isPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
+                                                contentDescription = "Play/Pause",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(32.dp)
+                                            )
                                         }
-                                        DropdownMenu(
-                                            expanded = expanded,
-                                            onDismissRequest = { expanded = false }
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("Rename") },
-                                                onClick = {
-                                                    expanded = false
-                                                    newFileName = file.nameWithoutExtension
-                                                    fileToRename = file
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Delete") },
-                                                onClick = {
-                                                    expanded = false
-                                                    if (currentFile == file) {
-                                                        audioPlayer.stop()
+                                        Box {
+                                            IconButton(onClick = { expanded = true }) {
+                                                Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                            }
+                                            DropdownMenu(
+                                                expanded = expanded,
+                                                onDismissRequest = { expanded = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Rename") },
+                                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                                    onClick = {
+                                                        expanded = false
+                                                        newFileName = file.nameWithoutExtension
+                                                        fileToRename = file
                                                     }
-                                                    val txtFile = File(file.parentFile, "${file.nameWithoutExtension}.txt")
-                                                    if (txtFile.exists()) txtFile.delete()
-                                                    file.delete()
-                                                    recordings = audioRecorder.getRecordings()
-                                                }
-                                            )
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                                    onClick = {
+                                                        expanded = false
+                                                        if (currentFile == file) {
+                                                            audioPlayer.stop()
+                                                        }
+                                                        val txtFile = File(file.parentFile, "${file.nameWithoutExtension}.txt")
+                                                        if (txtFile.exists()) txtFile.delete()
+                                                        file.delete()
+                                                        recordings = audioRecorder.getRecordings()
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        )
-                        HorizontalDivider()
+                            )
+                        }
                     }
                 }
             }
