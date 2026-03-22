@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,9 +38,9 @@ import com.example.recordingandtranscribe.core.FileExporter
 import com.example.recordingandtranscribe.core.GeminiNanoTranscriber
 import com.example.recordingandtranscribe.core.GeminiTranscriber
 import com.example.recordingandtranscribe.core.MetadataManager
+import com.example.recordingandtranscribe.core.zh
 import com.example.recordingandtranscribe.core.RecordingMetadata
 import com.example.recordingandtranscribe.core.SettingsRepository
-import com.example.recordingandtranscribe.core.zh
 import kotlinx.coroutines.launch
 import java.io.File
 

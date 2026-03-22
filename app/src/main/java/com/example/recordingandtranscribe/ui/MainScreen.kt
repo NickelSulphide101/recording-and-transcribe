@@ -40,6 +40,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.background
 import kotlinx.coroutines.Dispatchers
@@ -697,6 +698,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     }
 
     if (fileToTag != null) {
+        @OptIn(ExperimentalLayoutApi::class)
         AlertDialog(
             onDismissRequest = { fileToTag = null },
             icon = { Icon(Icons.Default.Label, contentDescription = null) },
