@@ -1,6 +1,10 @@
 package com.example.recordingandtranscribe.ui
 
-import androidx.compose.foundation.clickable
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,25 +15,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
-import com.example.recordingandtranscribe.core.AudioRecorder
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.AudioPlayer
+import com.example.recordingandtranscribe.core.AudioRecorder
+import com.example.recordingandtranscribe.core.AudioRecorderService
 import java.io.File
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
-    var isRecording by remember { mutableStateOf(false) }
     var recordings by remember { mutableStateOf(audioRecorder.getRecordings()) }
     val context = LocalContext.current
 
@@ -39,6 +39,9 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     val progress by audioPlayer.progress.collectAsState()
     val duration by audioPlayer.duration.collectAsState()
     val currentFile by audioPlayer.currentFile.collectAsState()
+    
+    val isRecording by AudioRecorderService.isRecording.collectAsState()
+    val isPaused by AudioRecorderService.isPaused.collectAsState()
 
     var fileToRename by remember { mutableStateOf<File?>(null) }
     var newFileName by remember { mutableStateOf("") }
@@ -50,19 +53,34 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
             audioPlayer.stop()
         }
     }
+    
+    LaunchedEffect(isRecording) {
+        if (!isRecording) {
+            recordings = audioRecorder.getRecordings()
+        }
+    }
 
-    var hasPermission by remember {
+    val permissionsToRequest = remember {
+        val list = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        list
+    }
+
+    var hasPermissions by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
+            permissionsToRequest.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
         )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted -> hasPermission = isGranted }
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = { permissions -> 
+            hasPermissions = permissions.values.all { it == true }
+        }
     )
 
     if (fileToRename != null) {
@@ -123,29 +141,41 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    if (!hasPermission) {
-                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    } else {
-                        if (isRecording) {
+            if (isRecording) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            if (isPaused) audioRecorder.resumeRecording() else audioRecorder.pauseRecording()
+                        },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        icon = { Icon(if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null) },
+                        text = { Text(if (isPaused) "Resume" else "Pause") }
+                    )
+                    ExtendedFloatingActionButton(
+                        onClick = {
                             audioRecorder.stopRecording()
-                            isRecording = false
-                            recordings = audioRecorder.getRecordings()
+                        },
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        icon = { Icon(Icons.Default.Stop, contentDescription = null) },
+                        text = { Text("Stop") }
+                    )
+                }
+            } else {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (!hasPermissions) {
+                            permissionLauncher.launch(permissionsToRequest.toTypedArray())
                         } else {
                             audioPlayer.stop()
-                            val file = audioRecorder.startRecording()
-                            if (file != null) {
-                                isRecording = true
-                            }
+                            audioRecorder.startRecording()
                         }
-                    }
-                },
-                containerColor = if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
-                icon = { Icon(if (isRecording) Icons.Default.Stop else Icons.Default.Mic, contentDescription = null) },
-                text = { Text(if (isRecording) "Stop Recording" else "Record Audio") },
-                expanded = true
-            )
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    icon = { Icon(Icons.Default.Mic, contentDescription = null) },
+                    text = { Text("Record Audio") },
+                    expanded = true
+                )
+            }
         },
         floatingActionButtonPosition = FabPosition.Center,
         bottomBar = {
