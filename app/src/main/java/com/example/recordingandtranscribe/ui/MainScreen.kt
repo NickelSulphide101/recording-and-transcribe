@@ -61,11 +61,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     }
 
     val permissionsToRequest = remember {
-        val list = mutableListOf(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            list.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        list
+        listOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
     }
 
     var hasPermissions by remember {

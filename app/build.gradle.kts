@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "com.example.recordingandtranscribe"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.recordingandtranscribe"
-        minSdk = 26
-        targetSdk = 35
+        minSdk = 36
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -60,6 +60,9 @@ dependencies {
 
     // Datastore for settings
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    
+    // Media for MediaStyle notifications
+    implementation("androidx.media:media:1.7.0")
     
     // Generative AI SDK
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")

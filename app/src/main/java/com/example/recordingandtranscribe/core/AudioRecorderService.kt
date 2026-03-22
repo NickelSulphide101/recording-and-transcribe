@@ -11,6 +11,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.media.app.NotificationCompat.MediaStyle
 import com.example.recordingandtranscribe.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,12 +65,7 @@ class AudioRecorderService : Service() {
         val outputFile = File(filesDir, fileName)
         currentFile = outputFile
 
-        recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MediaRecorder(this)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }.apply {
+        recorder = MediaRecorder(this).apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.OGG)
             setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
@@ -82,11 +78,7 @@ class AudioRecorderService : Service() {
                 start()
                 _isRecording.value = true
                 _isPaused.value = false
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-                } else {
-                    startForeground(NOTIFICATION_ID, buildNotification())
-                }
+                startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } catch (e: Exception) {
                 e.printStackTrace()
                 stopSelf()
@@ -181,6 +173,7 @@ class AudioRecorderService : Service() {
             .addAction(stopAction)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setStyle(MediaStyle().setShowActionsInCompactView(0, 1))
             .build()
     }
 
