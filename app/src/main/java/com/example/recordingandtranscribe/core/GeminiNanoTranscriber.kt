@@ -2,17 +2,18 @@ import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.genai.speechrecognition.AudioSource
-import com.google.mlkit.genai.speechrecognition.DownloadStatus
-import com.google.mlkit.genai.speechrecognition.FeatureStatus
+import com.google.mlkit.genai.common.DownloadStatus
+import com.google.mlkit.genai.common.FeatureStatus
+import com.google.mlkit.genai.common.audio.AudioSource
 import com.google.mlkit.genai.speechrecognition.SpeechRecognition
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerRequest
+import com.google.mlkit.genai.speechrecognition.SpeechRecognizerResponse
 import com.google.mlkit.genai.speechrecognition.speechRecognizerOptions
 import com.google.mlkit.genai.speechrecognition.speechRecognizerRequest
-import com.google.mlkit.nl.summarization.Summarization
-import com.google.mlkit.nl.summarization.SummarizationRequest
-import com.google.mlkit.nl.summarization.SummarizerOptions
+import com.google.mlkit.genai.summarization.Summarization
+import com.google.mlkit.genai.summarization.SummarizationRequest
+import com.google.mlkit.genai.summarization.SummarizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.tasks.await
@@ -70,8 +71,6 @@ class GeminiNanoTranscriber(private val context: Context) {
             // Check and download model if needed
             val status = recognizer.checkStatus().await()
             if (status == FeatureStatus.DOWNLOADABLE || status == FeatureStatus.UNAVAILABLE) {
-                // In a production app, we might want to track progress, but for simplicity we'll just wait for completion.
-                // Note: download is a Flow in ML Kit
                 var downloadSuccess = false
                 recognizer.download().collect { downloadStatus ->
                     if (downloadStatus is DownloadStatus.DownloadCompleted) {
@@ -88,7 +87,18 @@ class GeminiNanoTranscriber(private val context: Context) {
             
             var finalTranscript = ""
             recognizer.startRecognition(request).collect { response ->
-                finalTranscript = response.text ?: ""
+                when (response) {
+                    is SpeechRecognizerResponse.FinalTextResponse -> {
+                        finalTranscript = response.text
+                    }
+                    is SpeechRecognizerResponse.PartialTextResponse -> {
+                        // Intermediate results can be logged or used to update UI
+                        finalTranscript = response.text
+                    }
+                    is SpeechRecognizerResponse.ErrorResponse -> {
+                        Log.e("GeminiNano", "Recognition error: ${response.e.message}")
+                    }
+                }
             }
             
             recognizer.stopRecognition()
