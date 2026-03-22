@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -262,6 +264,7 @@ fun TranscriptionScreen(
                             )
                         )
                         .padding(16.dp)
+                ) {
                     when (selectedTab) {
                         0 -> {
                             Text(
@@ -333,6 +336,7 @@ fun TranscriptionScreen(
                                  )
                              }
                         }
+                        else -> {}
                     }
                     
                     // Copy button floating in the bottom right of the container
