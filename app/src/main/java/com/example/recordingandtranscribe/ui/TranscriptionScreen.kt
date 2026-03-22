@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.GeminiTranscriber
 import com.example.recordingandtranscribe.core.SettingsRepository
+import com.example.recordingandtranscribe.core.zh
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -30,6 +32,7 @@ fun TranscriptionScreen(
     file: File,
     settingsRepository: SettingsRepository
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val apiKey by settingsRepository.apiKeyFlow.collectAsState(initial = null)
     val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
@@ -55,7 +58,7 @@ fun TranscriptionScreen(
                 title = { Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back".zh(context, "返回"))
                     }
                 },
                 scrollBehavior = scrollBehavior
@@ -84,7 +87,7 @@ fun TranscriptionScreen(
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text("File Size", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("File Size".zh(context, "文件大小"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -98,7 +101,7 @@ fun TranscriptionScreen(
                     val apiKeysList = apiKeysStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                     
                     if (apiKeysList.isEmpty()) {
-                        errorMessage = "Please set your Gemini API Key(s) in Settings first."
+                        errorMessage = "Please set your Gemini API Key(s) in Settings first.".zh(context, "请先在设置中配置 Gemini API 密钥。")
                         return@Button
                     }
                     
@@ -119,7 +122,7 @@ fun TranscriptionScreen(
                                 e.printStackTrace()
                             }
                         }.onFailure {
-                            errorMessage = it.message ?: "All keys failed to transcribe the audio."
+                            errorMessage = it.message ?: "All keys failed to transcribe the audio.".zh(context, "所有提供的密钥均转录失败。")
                         }
                     }
                 },
@@ -136,9 +139,9 @@ fun TranscriptionScreen(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("Transcribing Audio...", style = MaterialTheme.typography.titleMedium)
+                    Text("Transcribing Audio...".zh(context, "正在转录音频..."), style = MaterialTheme.typography.titleMedium)
                 } else {
-                    Text(if (txtFile.exists()) "Re-Transcribe Audio" else "Transcribe Audio", style = MaterialTheme.typography.titleMedium)
+                    Text(if (txtFile.exists()) "Re-Transcribe Audio".zh(context, "重新转录音频") else "Transcribe Audio".zh(context, "开始转录音频"), style = MaterialTheme.typography.titleMedium)
                 }
             }
             
@@ -165,7 +168,7 @@ fun TranscriptionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Result",
+                        text = "Result".zh(context, "转录结果"),
                         style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
@@ -173,7 +176,7 @@ fun TranscriptionScreen(
                     FilledIconButton(onClick = {
                         clipboardManager.setText(AnnotatedString(transcriptionText!!))
                     }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy text")
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy text".zh(context, "复制文本"))
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))

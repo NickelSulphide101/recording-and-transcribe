@@ -24,6 +24,7 @@ import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.AudioPlayer
 import com.example.recordingandtranscribe.core.AudioRecorder
 import com.example.recordingandtranscribe.core.AudioRecorderService
+import com.example.recordingandtranscribe.core.zh
 import java.io.File
 import java.util.Locale
 
@@ -86,12 +87,12 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         AlertDialog(
             onDismissRequest = { fileToRename = null },
             icon = { Icon(Icons.Default.Edit, contentDescription = null) },
-            title = { Text("Rename Recording") },
+            title = { Text("Rename Recording".zh(context, "重命名录音")) },
             text = {
                 OutlinedTextField(
                     value = newFileName,
                     onValueChange = { newFileName = it },
-                    label = { Text("New file name") },
+                    label = { Text("New file name".zh(context, "新文件名")) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
@@ -115,12 +116,12 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     }
                     fileToRename = null
                 }) {
-                    Text("Rename")
+                    Text("Rename".zh(context, "重命名"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { fileToRename = null }) {
-                    Text("Cancel")
+                    Text("Cancel".zh(context, "取消"))
                 }
             }
         )
@@ -130,10 +131,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text("Recordings", fontWeight = FontWeight.Bold) },
+                title = { Text("Recordings".zh(context, "录音列表"), fontWeight = FontWeight.Bold) },
                 actions = {
                     FilledIconButton(onClick = { navController.navigate("settings") }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = "Settings".zh(context, "设置"))
                     }
                 },
                 scrollBehavior = scrollBehavior
@@ -148,7 +149,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         },
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         icon = { Icon(if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null) },
-                        text = { Text(if (isPaused) "Resume" else "Pause") }
+                        text = { Text(if (isPaused) "Resume".zh(context, "继续") else "Pause".zh(context, "暂停")) }
                     )
                     ExtendedFloatingActionButton(
                         onClick = {
@@ -156,7 +157,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         },
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         icon = { Icon(Icons.Default.Stop, contentDescription = null) },
-                        text = { Text("Stop") }
+                        text = { Text("Stop".zh(context, "停止")) }
                     )
                 }
             } else {
@@ -171,7 +172,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     icon = { Icon(Icons.Default.Mic, contentDescription = null) },
-                    text = { Text("Record Audio") },
+                    text = { Text("Record Audio".zh(context, "录制音频")) },
                     expanded = true
                 )
             }
@@ -230,11 +231,11 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                 },
                                 enabled = currentIndex > 0
                             ) {
-                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous Track")
+                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous Track".zh(context, "上一首"))
                             }
                             
                             IconButton(onClick = { audioPlayer.seekRelative(-10000) }) {
-                                Icon(Icons.Default.FastRewind, contentDescription = "Rewind 10s")
+                                Icon(Icons.Default.FastRewind, contentDescription = "Rewind 10s".zh(context, "快退 10 秒"))
                             }
                             
                             FilledIconButton(
@@ -243,13 +244,13 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                             ) {
                                 Icon(
                                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = "Play/Pause",
+                                    contentDescription = "Play/Pause".zh(context, "播放/暂停"),
                                     modifier = Modifier.size(32.dp)
                                 )
                             }
                             
                             IconButton(onClick = { audioPlayer.seekRelative(10000) }) {
-                                Icon(Icons.Default.FastForward, contentDescription = "Forward 10s")
+                                Icon(Icons.Default.FastForward, contentDescription = "Forward 10s".zh(context, "快进 10 秒"))
                             }
                             
                             IconButton(
@@ -260,7 +261,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                 },
                                 enabled = currentIndex in 0 until recordings.size - 1
                             ) {
-                                Icon(Icons.Default.SkipNext, contentDescription = "Next Track")
+                                Icon(Icons.Default.SkipNext, contentDescription = "Next Track".zh(context, "下一首"))
                             }
                         }
                     }
@@ -284,12 +285,12 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            "No recordings found",
+                            "No recordings found".zh(context, "暂无录音文件"),
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            "Tap the record button below to begin.",
+                            "Tap the record button below to begin.".zh(context, "点击下方麦克风按钮开始录音"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -321,7 +322,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (currentFile == file && isPlaying) {
-                                            Icon(Icons.Default.GraphicEq, contentDescription = "Playing", tint = MaterialTheme.colorScheme.primary)
+                                            Icon(Icons.Default.GraphicEq, contentDescription = "Playing".zh(context, "正在播放"), tint = MaterialTheme.colorScheme.primary)
                                         } else {
                                             Icon(Icons.Default.AudioFile, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
@@ -338,21 +339,21 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                         }) {
                                             Icon(
                                                 if (currentFile == file && isPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
-                                                contentDescription = "Play/Pause",
+                                                contentDescription = "Play/Pause".zh(context, "播放/暂停"),
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(32.dp)
                                             )
                                         }
                                         Box {
                                             IconButton(onClick = { expanded = true }) {
-                                                Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                                Icon(Icons.Default.MoreVert, contentDescription = "More options".zh(context, "更多选项"))
                                             }
                                             DropdownMenu(
                                                 expanded = expanded,
                                                 onDismissRequest = { expanded = false }
                                             ) {
                                                 DropdownMenuItem(
-                                                    text = { Text("Rename") },
+                                                    text = { Text("Rename".zh(context, "重命名")) },
                                                     leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                                                     onClick = {
                                                         expanded = false
@@ -361,7 +362,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                     }
                                                 )
                                                 DropdownMenuItem(
-                                                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                                    text = { Text("Delete".zh(context, "删除"), color = MaterialTheme.colorScheme.error) },
                                                     leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                                                     onClick = {
                                                         expanded = false

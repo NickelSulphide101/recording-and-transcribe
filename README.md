@@ -1,48 +1,51 @@
-# Recording and Transcribe
+# Audio Recording and Transcription Application
 
-A robust, modern native Android application built with Jetpack Compose. It allows users to record highly-compressed voice notes, manage them, and seamlessly transcribe them into text using Google's **Gemini AI models** (like Gemini 1.5 Flash or Pro).
+A modern Android application for recording audio and transcribing it using Google's Gemini AI.
 
-## ✨ Key Features
+## Features
 
-* **Advanced Voice Recording**: One-tap recording using Android's `MediaRecorder` API. Audio is encoded in **Opus** format at 16kHz/16Kbps, guaranteeing crisp human voice legibility while drastically reducing `.ogg` file sizes for ultimate storage efficiency and upload bandwidth savings.
-* **Full-Featured Audio Player**: Click on any recording in the history list to reveal a pristine playback console at the bottom of the screen. Includes play/pause, seek slider, ±10s skip, and previous/next track functionality.
-* **Recording Management**: Long-press or click the "more" (⋮) icon on any recording to cleanly **Rename** or **Delete** the audio.
-* **AI Transcription & Local Caching**: Send your audio to Gemini for an exact text transcription. Once transcribed, the result is **cached locally** as a hidden `.txt` file, ensuring instantaneous re-loads in the future without wasting API quota or waiting for the network.
-* **One-Click Copy**: Easily copy the transcribed text to your Android system clipboard using the built-in copy button.
-* **API Key Rotation & Custom Models**:
-  * Input multiple Gemini API Keys (comma-separated) in Settings. If one fails or hits a rate limit, the app automatically and silently rotates to the next key.
-  * Define exactly which AI Model you want to use (defaults to `gemini-1.5-flash`).
-* **Automatic CI/CD Pipeline**: GitHub Actions are pre-configured to build a new Android Debug APK on every single push to the `main` branch, automatically publishing it as a GitHub Release.
+- **High-Quality Recording**: Uses Opus encoding in OGG format for superior compression and voice quality.
+- **Background Recording**: Persistent recording through a foreground service, allowing you to record even when the app is in the background or the screen is locked.
+- **Notification Controls**: Pause, Resume, and Stop recording directly from the notification bar.
+- **Advanced AI Transcription**: Powered by Google Gemini. Supports multiple API keys with automatic rotation and fallback.
+- **Local Caching**: Transcription results are saved locally for instant access.
+- **Bilingual Interface**: Supporting both English and Chinese based on system preferences, using the latest Android 16 Locale APIs.
+- **Material 3 Design**: Modern, clean UI with dynamic color support (Material You).
+- **Targeting Android 16**: Built with the latest Android 16 APIs (API 36), featuring edge-to-edge layout, predictive back gestures, and MediaStyle notifications.
 
-## 📱 Requirements
+## Requirements
 
-* Android Device (Target SDK 35, Min SDK 26) - Highly optimized for the latest Android devices, including Pixel.
-* Microphone Permissions. 
-* A valid Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/).
+- **Android Version**: Android 16 (API 36) or higher.
+- **Permissions**:
+  - `RECORD_AUDIO`: Required for recording voice.
+  - `POST_NOTIFICATIONS`: Required for background recording notification.
+  - `FOREGROUND_SERVICE_MICROPHONE`: Required for persistent recording.
+  - `INTERNET`: Required for communicating with Google Gemini API.
 
-## ⚙️ CI/CD details
+## Setup
 
-The project does not require a local Gradle build environment. The repository includes a GitHub Action `.github/workflows/android.yml` which does the following:
+1. Get one or more Gemini API keys from [Google AI Studio](https://aistudio.google.com/).
+2. Open the app and go to **Settings**.
+3. Enter your API keys (separated by commas if you have multiple).
+4. (Optional) Customize the Gemini model name (default is `gemini-1.5-flash`).
+5. Save settings and start recording!
 
-1. Triggers dynamically on every push/PR to the `main` branch.
-2. Sets up the environment with Node 24 variables, JDK 17, and standard `setup-gradle`.
-3. Builds the `app-debug.apk`.
-4. Creates a designated GitHub Release strictly appended to your commit under the "Releases" panel.
+## Development
 
-## 🚀 Setup Instructions
+- **Language**: Kotlin
+- **UI Framework**: Jetpack Compose (Material 3)
+- **Architecture**: MVVM / Service-based background processing
+- **Build System**: Gradle 9.1.0+ with JDK 25/26
+- **Dependencies**:
+  - `androidx.core:core-ktx:1.15.0`
+  - `com.google.ai.client.generativeai:generativeai:0.9.0`
+  - `androidx.media:media:1.7.0`
+  - `androidx.navigation:navigation-compose:2.8.4`
+  - `androidx.datastore:datastore-preferences:1.1.1`
 
-1. Simply **Commit and Push** this codebase to the `main` branch of your GitHub repository.
-2. Allow GitHub Actions about 2-3 minutes to successfully complete its task.
-3. Go to the **Releases** tab on the repository's page to download the latest `.apk` installation package.
-4. Sideload/Install the `.apk` on your Android device.
-5. In the app, open Settings (gear icon in the top right).
-6. Enter your Gemini API Key(s) (comma-separated) and your preferred Model Name, then tap Save.
-7. Tap the microphone button to start recording and let Gemini transcribe it!
-
-## 🛠️ Tech Stack
-
-* Kotlin
-* Jetpack Compose & Material 3
-* Jetpack Navigation Compose
-* Jetpack DataStore Preferences
-* Google Generative AI Android SDK
+## UI
+The UI is fully modernized for Android 16 with:
+- Edge-to-edge immersive display.
+- Predictive back gesture support.
+- MediaStyle notification with playback-like controls for recording.
+- Dynamic color themes that adapt to your wallpaper.

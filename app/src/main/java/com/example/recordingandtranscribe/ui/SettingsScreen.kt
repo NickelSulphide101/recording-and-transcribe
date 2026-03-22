@@ -10,9 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.SettingsRepository
+import com.example.recordingandtranscribe.core.zh
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -21,6 +23,7 @@ fun SettingsScreen(
     navController: NavController,
     settingsRepository: SettingsRepository
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val apiKey by settingsRepository.apiKeyFlow.collectAsState(initial = "")
     val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
@@ -32,10 +35,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             LargeTopAppBar(
-                title = { Text("Settings") },
+                title = { Text("Settings".zh(context, "设置")) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back".zh(context, "返回"))
                     }
                 },
                 scrollBehavior = scrollBehavior
@@ -54,7 +57,7 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Google Gemini Configuration",
+                        text = "Google Gemini Configuration".zh(context, "Google Gemini 配置"),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -65,7 +68,7 @@ fun SettingsScreen(
                             currentApiKey = it
                             isSaved = false
                         },
-                        label = { Text("Gemini API Keys (comma separated)") },
+                        label = { Text("Gemini API Keys (comma separated)".zh(context, "Gemini API 密钥 (多个用英文逗号分隔)")) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = false,
                         maxLines = 5,
@@ -78,7 +81,7 @@ fun SettingsScreen(
                             currentModelName = it
                             isSaved = false
                         },
-                        label = { Text("Model Name") },
+                        label = { Text("Model Name".zh(context, "模型名称")) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         shape = MaterialTheme.shapes.medium
@@ -100,7 +103,7 @@ fun SettingsScreen(
                     .height(56.dp),
                 shape = MaterialTheme.shapes.large
             ) {
-                Text("Save Configuration", style = MaterialTheme.typography.titleMedium)
+                Text("Save Configuration".zh(context, "保存设置"), style = MaterialTheme.typography.titleMedium)
             }
             if (isSaved) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -109,7 +112,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Settings saved successfully!",
+                        text = "Settings saved successfully!".zh(context, "设置已成功保存！"),
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(16.dp)
