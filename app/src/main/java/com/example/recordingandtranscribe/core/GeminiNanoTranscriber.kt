@@ -103,9 +103,6 @@ class GeminiNanoTranscriber(private val context: Context) {
                     is SpeechRecognizerResponse.ErrorResponse -> {
                         Log.e("GeminiNano", "Recognition error: ${response.e.message}")
                     }
-                    else -> {
-                        // Handle other possible responses
-                    }
                 }
             }
             
