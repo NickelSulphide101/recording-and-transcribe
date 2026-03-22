@@ -141,14 +141,18 @@ fun TranscriptionScreen(
                 Button(
                     onClick = {
                         val apiKeysList = (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                        if (apiKeysList.isEmpty()) {
+                        if (!useGeminiNano && apiKeysList.isEmpty()) {
                             errorMessage = "Please set Gemini API Key in Settings.".zh(context, "请先在设置中配置 Gemini API 密钥。")
                             return@Button
                         }
                         isProcessing = true
                         errorMessage = null
                         coroutineScope.launch {
-                            val transcriber = GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
+                            val transcriber = if (apiKeysList.isNotEmpty()) {
+                                GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
+                            } else {
+                                null
+                            }
                             val nanoTranscriber = GeminiNanoTranscriber(context)
                             
                             val transcriptResult = if (useGeminiNano) {
@@ -160,12 +164,12 @@ fun TranscriptionScreen(
                             val summaryResult = if (useGeminiNano) {
                                 nanoTranscriber.generateOnDeviceSummary(transcriptResult.getOrNull() ?: "")
                             } else {
-                                transcriber.generateSummary(file)
+                                transcriber?.generateSummary(file) ?: Result.failure(Exception("API Key required"))
                             }
-                            val actionItemsResult = transcriber.generateActionItems(file)
-                            val keywordsResult = transcriber.generateKeywords(file)
-                            val emotionResult = transcriber.generateEmotionAnalysis(file)
-                            val privacyResult = transcriber.generatePrivacyMaskedTranscript(file)
+                            val actionItemsResult = transcriber?.generateActionItems(file) ?: Result.failure(Exception("API Key required"))
+                            val keywordsResult = transcriber?.generateKeywords(file) ?: Result.failure(Exception("API Key required"))
+                            val emotionResult = transcriber?.generateEmotionAnalysis(file) ?: Result.failure(Exception("API Key required"))
+                            val privacyResult = transcriber?.generatePrivacyMaskedTranscript(file) ?: Result.failure(Exception("API Key required"))
 
                             val newMetadata = metadata.copy(
                                 transcript = transcriptResult.getOrNull() ?: metadata.transcript,
