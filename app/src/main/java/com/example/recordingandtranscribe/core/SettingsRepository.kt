@@ -3,7 +3,9 @@ package com.example.recordingandtranscribe.core
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +17,8 @@ class SettingsRepository(private val context: Context) {
     companion object {
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
         val GEMINI_MODEL_NAME = stringPreferencesKey("gemini_model_name")
+        val BITRATE = intPreferencesKey("bitrate")
+        val SKIP_SILENCE = booleanPreferencesKey("skip_silence")
     }
 
     val apiKeyFlow: Flow<String?> = context.dataStore.data
@@ -27,10 +31,18 @@ class SettingsRepository(private val context: Context) {
             preferences[GEMINI_MODEL_NAME]
         }
 
-    suspend fun saveSettings(apiKey: String, modelName: String) {
+    val bitrateFlow: Flow<Int> = context.dataStore.data
+        .map { it[BITRATE] ?: 16000 }
+
+    val skipSilenceFlow: Flow<Boolean> = context.dataStore.data
+        .map { it[SKIP_SILENCE] ?: false }
+
+    suspend fun saveSettings(apiKey: String, modelName: String, bitrate: Int? = null, skipSilence: Boolean? = null) {
         context.dataStore.edit { settings ->
             settings[GEMINI_API_KEY] = apiKey
             settings[GEMINI_MODEL_NAME] = modelName
+            if (bitrate != null) settings[BITRATE] = bitrate
+            if (skipSilence != null) settings[SKIP_SILENCE] = skipSilence
         }
     }
 }

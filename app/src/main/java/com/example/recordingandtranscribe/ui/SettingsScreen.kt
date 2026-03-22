@@ -25,10 +25,17 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    
     val apiKey by settingsRepository.apiKeyFlow.collectAsState(initial = "")
     val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
+    val bitrate by settingsRepository.bitrateFlow.collectAsState(initial = 16000)
+    val skipSilence by settingsRepository.skipSilenceFlow.collectAsState(initial = false)
+
     var currentApiKey by remember(apiKey) { mutableStateOf(apiKey ?: "") }
     var currentModelName by remember(modelName) { mutableStateOf(modelName ?: "gemini-1.5-flash") }
+    var currentBitrate by remember(bitrate) { mutableIntStateOf(bitrate) }
+    var currentSkipSilence by remember(skipSilence) { mutableStateOf(skipSilence) }
+    
     var isSaved by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -50,6 +57,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -70,8 +78,6 @@ fun SettingsScreen(
                         },
                         label = { Text("Gemini API Keys (comma separated)".zh(context, "Gemini API 密钥 (多个用英文逗号分隔)")) },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = false,
-                        maxLines = 5,
                         shape = MaterialTheme.shapes.medium
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -89,12 +95,59 @@ fun SettingsScreen(
                 }
             }
             
+            Spacer(modifier = Modifier.height(16.dp))
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Recording Settings".zh(context, "录音设置"),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text("Audio Bitrate".zh(context, "音频比特率") + ": ${currentBitrate / 1000} kbps")
+                    Slider(
+                        value = currentBitrate.toFloat(),
+                        onValueChange = { 
+                            currentBitrate = it.toInt() 
+                            isSaved = false
+                        },
+                        valueRange = 8000f..128000f,
+                        steps = 14
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Skip Silence".zh(context, "自动跳过静音"), style = MaterialTheme.typography.bodyLarge)
+                            Text("Auto-pause when no sound is detected".zh(context, "未检测到声音时自动暂停"), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(
+                            checked = currentSkipSilence,
+                            onCheckedChange = { 
+                                currentSkipSilence = it 
+                                isSaved = false
+                            }
+                        )
+                    }
+                }
+            }
+            
             Spacer(modifier = Modifier.height(24.dp))
             
             FilledTonalButton(
                 onClick = {
                     coroutineScope.launch {
-                        settingsRepository.saveSettings(currentApiKey, currentModelName)
+                        settingsRepository.saveSettings(currentApiKey, currentModelName, currentBitrate, currentSkipSilence)
                         isSaved = true
                     }
                 },
@@ -119,6 +172,10 @@ fun SettingsScreen(
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
+
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll

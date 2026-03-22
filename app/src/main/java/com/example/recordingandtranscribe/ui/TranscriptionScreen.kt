@@ -5,12 +5,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -19,7 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.recordingandtranscribe.core.FileExporter
 import com.example.recordingandtranscribe.core.GeminiTranscriber
+import com.example.recordingandtranscribe.core.MetadataManager
+import com.example.recordingandtranscribe.core.RecordingMetadata
 import com.example.recordingandtranscribe.core.SettingsRepository
 import com.example.recordingandtranscribe.core.zh
 import kotlinx.coroutines.launch
@@ -37,19 +45,13 @@ fun TranscriptionScreen(
     val apiKey by settingsRepository.apiKeyFlow.collectAsState(initial = null)
     val modelName by settingsRepository.modelNameFlow.collectAsState(initial = "gemini-1.5-flash")
     
-    var isTranscribing by remember { mutableStateOf(false) }
-    var transcriptionText by remember { mutableStateOf<String?>(null) }
+    var isProcessing by remember { mutableStateOf(false) }
+    var metadata by remember { mutableStateOf(MetadataManager.loadMetadata(file)) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var selectedTab by remember { mutableIntStateOf(0) }
+    
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
     val clipboardManager = LocalClipboardManager.current
-    val txtFile = remember(file) { File(file.parentFile, "${file.nameWithoutExtension}.txt") }
-
-    LaunchedEffect(file) {
-        if (txtFile.exists()) {
-            transcriptionText = txtFile.readText()
-        }
-    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -59,6 +61,14 @@ fun TranscriptionScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back".zh(context, "返回"))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        val pdf = FileExporter.exportToPdf(context, file, metadata)
+                        if (pdf != null) FileExporter.shareFile(context, pdf)
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share".zh(context, "分享"))
                     }
                 },
                 scrollBehavior = scrollBehavior
@@ -90,113 +100,168 @@ fun TranscriptionScreen(
                         Text("File Size".zh(context, "文件大小"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                     }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Button(
-                onClick = {
-                    val apiKeysStr = apiKey ?: ""
-                    val apiKeysList = apiKeysStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                    
-                    if (apiKeysList.isEmpty()) {
-                        errorMessage = "Please set your Gemini API Key(s) in Settings first.".zh(context, "请先在设置中配置 Gemini API 密钥。")
-                        return@Button
-                    }
-                    
-                    isTranscribing = true
-                    errorMessage = null
-                    
-                    coroutineScope.launch {
-                        val actualModel = if (modelName.isNullOrBlank()) "gemini-1.5-flash" else modelName!!
-                        val transcriber = GeminiTranscriber(apiKeysList, actualModel)
-                        val result = transcriber.transcribeAudio(file)
-                        isTranscribing = false
-                        
-                        result.onSuccess {
-                            transcriptionText = it
-                            try {
-                                txtFile.writeText(it)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }.onFailure {
-                            errorMessage = it.message ?: "All keys failed to transcribe the audio.".zh(context, "所有提供的密钥均转录失败。")
+                    Spacer(modifier = Modifier.weight(1f))
+                    if (metadata.keywords.isNotEmpty()) {
+                        metadata.keywords.take(2).forEach { kw ->
+                            SuggestionChip(
+                                onClick = {},
+                                label = { Text(kw, style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
                         }
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                enabled = !isTranscribing
-            ) {
-                if (isTranscribing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Transcribing Audio...".zh(context, "正在转录音频..."), style = MaterialTheme.typography.titleMedium)
-                } else {
-                    Text(if (txtFile.exists()) "Re-Transcribe Audio".zh(context, "重新转录音频") else "Transcribe Audio".zh(context, "开始转录音频"), style = MaterialTheme.typography.titleMedium)
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // AI Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        val apiKeysList = (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        if (apiKeysList.isEmpty()) {
+                            errorMessage = "Please set Gemini API Key in Settings.".zh(context, "请先在设置中配置 Gemini API 密钥。")
+                            return@Button
+                        }
+                        isProcessing = true
+                        errorMessage = null
+                        coroutineScope.launch {
+                            val transcriber = GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
+                            val transcriptResult = transcriber.transcribeAudio(file)
+                            val summaryResult = transcriber.generateSummary(file)
+                            val actionItemsResult = transcriber.generateActionItems(file)
+                            val keywordsResult = transcriber.generateKeywords(file)
+
+                            val newMetadata = RecordingMetadata(
+                                transcript = transcriptResult.getOrNull() ?: metadata.transcript,
+                                summary = summaryResult.getOrNull() ?: metadata.summary,
+                                actionItems = actionItemsResult.getOrNull() ?: metadata.actionItems,
+                                keywords = keywordsResult.getOrNull() ?: metadata.keywords
+                            )
+                            metadata = newMetadata
+                            MetadataManager.saveMetadata(file, newMetadata)
+                            isProcessing = false
+                            if (transcriptResult.isFailure) {
+                                errorMessage = transcriptResult.exceptionOrNull()?.message ?: "AI processing failed.".zh(context, "AI 处理失败。")
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = MaterialTheme.shapes.large,
+                    enabled = !isProcessing
+                ) {
+                    if (isProcessing) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("AI Insights".zh(context, "AI 洞察"))
+                    }
+                }
+            }
             
+            Spacer(modifier = Modifier.height(16.dp))
+
             if (errorMessage != null) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
                 ) {
-                    Text(
-                        text = errorMessage!!,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(16.dp)
-                    )
+                    Text(text = errorMessage!!, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(16.dp))
                 }
             }
-            
-            if (transcriptionText != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Result".zh(context, "转录结果"),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    FilledIconButton(onClick = {
-                        clipboardManager.setText(AnnotatedString(transcriptionText!!))
-                    }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy text".zh(context, "复制文本"))
-                    }
+
+            // Tabs for different views
+            SecondaryTabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = MaterialTheme.colorScheme.surface,
+                divider = {}
+            ) {
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
+                    Text("Transcript".zh(context, "全文"), modifier = Modifier.padding(12.dp))
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(bottom = 16.dp),
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    tonalElevation = 4.dp
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
+                    Text("Summary".zh(context, "摘要"), modifier = Modifier.padding(12.dp))
+                }
+                Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
+                    Text("Tasks".zh(context, "任务"), modifier = Modifier.padding(12.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 16.dp),
+                shape = MaterialTheme.shapes.large,
+                color = Color.Transparent,
+                tonalElevation = 2.dp
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.surfaceContainerLow,
+                                    MaterialTheme.colorScheme.surfaceContainerHigh
+                                )
+                            )
+                        )
+                        .padding(16.dp)
                 ) {
-                    Text(
-                        text = transcriptionText!!,
-                        modifier = Modifier
-                            .padding(20.dp)
-                            .verticalScroll(rememberScrollState()),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    when (selectedTab) {
+                        0 -> {
+                            Text(
+                                text = metadata.transcript ?: "No transcript available.".zh(context, "暂无转录内容。"),
+                                modifier = Modifier.verticalScroll(scrollState),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                        1 -> {
+                            Text(
+                                text = metadata.summary ?: "No summary available.".zh(context, "暂无摘要。"),
+                                modifier = Modifier.verticalScroll(scrollState),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                        2 -> {
+                            Column(modifier = Modifier.verticalScroll(scrollState)) {
+                                if (metadata.actionItems.isEmpty()) {
+                                    Text("No action items found.".zh(context, "未发现行动事项。"))
+                                } else {
+                                    metadata.actionItems.forEach { item ->
+                                        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(vertical = 4.dp)) {
+                                            Icon(Icons.Default.Assignment, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(item, style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Copy button floating in the bottom right of the container
+                    FilledIconButton(
+                        onClick = {
+                            val textToCopy = when(selectedTab) {
+                                0 -> metadata.transcript
+                                1 -> metadata.summary
+                                2 -> metadata.actionItems.joinToString("\n")
+                                else -> ""
+                            }
+                            if (!textToCopy.isNullOrBlank()) {
+                                clipboardManager.setText(AnnotatedString(textToCopy))
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy".zh(context, "复制"))
+                    }
                 }
             }
         }

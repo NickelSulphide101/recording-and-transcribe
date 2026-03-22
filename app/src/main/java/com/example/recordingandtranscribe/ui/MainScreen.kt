@@ -15,18 +15,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.foundation.Canvas
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.AudioPlayer
 import com.example.recordingandtranscribe.core.AudioRecorder
 import com.example.recordingandtranscribe.core.AudioRecorderService
+import com.example.recordingandtranscribe.core.FileExporter
+import com.example.recordingandtranscribe.core.MetadataManager
 import com.example.recordingandtranscribe.core.zh
 import java.io.File
 import java.util.Locale
+import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,10 +46,15 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     val duration by audioPlayer.duration.collectAsState()
     val currentFile by audioPlayer.currentFile.collectAsState()
     
-    val isRecording by AudioRecorderService.isRecording.collectAsState()
-    val isPaused by AudioRecorderService.isPaused.collectAsState()
+    val amplitude by AudioRecorderService.amplitude.collectAsState()
+
+    var searchQuery by remember { mutableStateOf("") }
+    var filterFavorite by remember { mutableStateOf(false) }
+    var selectedTag by remember { mutableStateOf<String?>(null) }
 
     var fileToRename by remember { mutableStateOf<File?>(null) }
+    var fileToTag by remember { mutableStateOf<File?>(null) }
+    var tagToAdd by remember { mutableStateOf("") }
     var newFileName by remember { mutableStateOf("") }
     
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -130,51 +140,125 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
-                title = { Text("Recordings".zh(context, "录音列表"), fontWeight = FontWeight.Bold) },
-                actions = {
-                    FilledIconButton(onClick = { navController.navigate("settings") }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings".zh(context, "设置"))
-                    }
-                },
-                scrollBehavior = scrollBehavior
-            )
-        },
-        floatingActionButton = {
-            if (isRecording) {
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            if (isPaused) audioRecorder.resumeRecording() else audioRecorder.pauseRecording()
-                        },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        icon = { Icon(if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null) },
-                        text = { Text(if (isPaused) "Resume".zh(context, "继续") else "Pause".zh(context, "暂停")) }
-                    )
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            audioRecorder.stopRecording()
-                        },
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        icon = { Icon(Icons.Default.Stop, contentDescription = null) },
-                        text = { Text("Stop".zh(context, "停止")) }
-                    )
-                }
-            } else {
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        if (!hasPermissions) {
-                            permissionLauncher.launch(permissionsToRequest.toTypedArray())
-                        } else {
-                            audioPlayer.stop()
-                            audioRecorder.startRecording()
+            Column {
+                LargeTopAppBar(
+                    title = { 
+                        Column {
+                            Text("Recordings".zh(context, "录音列表"), fontWeight = FontWeight.Bold)
+                            if (isRecording) {
+                                Text(
+                                    if (isPaused) "Recording Paused".zh(context, "录音已暂停") else "Recording...".zh(context, "正在录音..."),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    icon = { Icon(Icons.Default.Mic, contentDescription = null) },
-                    text = { Text("Record Audio".zh(context, "录制音频")) },
-                    expanded = true
+                    actions = {
+                        FilledIconButton(onClick = { navController.navigate("settings") }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings".zh(context, "设置"))
+                        }
+                    },
+                    scrollBehavior = scrollBehavior
                 )
+                
+                // Search Bar
+                AnimatedVisibility(
+                    visible = !isRecording,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        placeholder = { Text("Search recordings...".zh(context, "搜索录音...")) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = if (searchQuery.isNotEmpty()) {
+                            { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Clear, contentDescription = null) } }
+                        } else null,
+                        shape = MaterialTheme.shapes.extraLarge,
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                        )
+                    )
+                }
+
+                // Filter Chips
+                AnimatedVisibility(
+                    visible = !isRecording,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = filterFavorite,
+                            onClick = { filterFavorite = !filterFavorite },
+                            label = { Text("Favorites".zh(context, "已收藏")) },
+                            leadingIcon = if (filterFavorite) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            } else null
+                        )
+
+                        val allTags = recordings.flatMap { MetadataManager.loadMetadata(it).tags }.distinct()
+                        allTags.forEach { tag ->
+                            FilterChip(
+                                selected = selectedTag == tag,
+                                onClick = { selectedTag = if (selectedTag == tag) null else tag },
+                                label = { Text(tag) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        floatingActionButton = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.animateContentSize()
+            ) {
+                if (isRecording) {
+                    WaveformVisualizer(amplitude = amplitude, isPaused = isPaused)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                if (isPaused) audioRecorder.resumeRecording() else audioRecorder.pauseRecording()
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            icon = { Icon(if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null) },
+                            text = { Text(if (isPaused) "Resume".zh(context, "继续") else "Pause".zh(context, "暂停")) }
+                        )
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                audioRecorder.stopRecording()
+                            },
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            icon = { Icon(Icons.Default.Stop, contentDescription = null) },
+                            text = { Text("Stop".zh(context, "停止")) }
+                        )
+                    }
+                } else {
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            if (!hasPermissions) {
+                                permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                            } else {
+                                audioPlayer.stop()
+                                audioRecorder.startRecording()
+                            }
+                        },
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        icon = { Icon(Icons.Default.Mic, contentDescription = null) },
+                        text = { Text("Record Audio".zh(context, "录制音频")) },
+                        expanded = true
+                    )
+                }
             }
         },
         floatingActionButtonPosition = FabPosition.Center,
@@ -297,12 +381,21 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     }
                 }
             } else {
+                val filteredRecordings = recordings.filter { file ->
+                    val matchesSearch = file.name.contains(searchQuery, ignoreCase = true)
+                    val metadata = MetadataManager.loadMetadata(file)
+                    val matchesFavorite = !filterFavorite || metadata.isFavorite
+                    val matchesTag = selectedTag == null || metadata.tags.contains(selectedTag)
+                    matchesSearch && matchesFavorite && matchesTag
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 88.dp) // Leave space for FAB
                 ) {
-                    items(recordings) { file ->
+                    items(filteredRecordings) { file ->
                         var expanded by remember { mutableStateOf(false) }
+                        var mData by remember { mutableStateOf(MetadataManager.loadMetadata(file)) }
 
                         ElevatedCard(
                             modifier = Modifier
@@ -315,7 +408,29 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                             ListItem(
                                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                                 headlineContent = { Text(file.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                supportingContent = { Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodySmall) },
+                                supportingContent = { 
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                                            if (mData.isFavorite) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
+                                            }
+                                        }
+                                        if (mData.tags.isNotEmpty()) {
+                                            Row(modifier = Modifier.padding(top = 4.dp)) {
+                                                mData.tags.take(3).forEach { tag ->
+                                                    Text(
+                                                        "#$tag", 
+                                                        style = MaterialTheme.typography.labelSmall, 
+                                                        color = MaterialTheme.colorScheme.secondary,
+                                                        modifier = Modifier.padding(end = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
                                 leadingContent = {
                                     Box(
                                         modifier = Modifier.size(48.dp),
@@ -330,6 +445,17 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                 },
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = {
+                                            val newMeta = mData.copy(isFavorite = !mData.isFavorite)
+                                            MetadataManager.saveMetadata(file, newMeta)
+                                            mData = newMeta
+                                        }) {
+                                            Icon(
+                                                if (mData.isFavorite) Icons.Default.Star else Icons.Default.StarOutline,
+                                                contentDescription = "Favorite".zh(context, "收藏"),
+                                                tint = if (mData.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                         IconButton(onClick = {
                                             if (currentFile == file) {
                                                 audioPlayer.togglePlayPause()
@@ -362,6 +488,25 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                     }
                                                 )
                                                 DropdownMenuItem(
+                                                    text = { Text("Export".zh(context, "导出")) },
+                                                    leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                                    onClick = {
+                                                        expanded = false
+                                                        val m = MetadataManager.loadMetadata(file)
+                                                        val pdf = FileExporter.exportToPdf(context, file, m)
+                                                        if (pdf != null) FileExporter.shareFile(context, pdf)
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Tags".zh(context, "标签")) },
+                                                    leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                                                    onClick = {
+                                                        expanded = false
+                                                        fileToTag = file
+                                                        tagToAdd = ""
+                                                    }
+                                                )
+                                                DropdownMenuItem(
                                                     text = { Text("Delete".zh(context, "删除"), color = MaterialTheme.colorScheme.error) },
                                                     leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                                                     onClick = {
@@ -371,6 +516,8 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                         }
                                                         val txtFile = File(file.parentFile, "${file.nameWithoutExtension}.txt")
                                                         if (txtFile.exists()) txtFile.delete()
+                                                        val jsonFile = File(file.parentFile, "${file.nameWithoutExtension}.json")
+                                                        if (jsonFile.exists()) jsonFile.delete()
                                                         file.delete()
                                                         recordings = audioRecorder.getRecordings()
                                                     }
@@ -386,11 +533,101 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
             }
         }
     }
+
+    if (fileToTag != null) {
+        AlertDialog(
+            onDismissRequest = { fileToTag = null },
+            icon = { Icon(Icons.Default.Label, contentDescription = null) },
+            title = { Text("Manage Tags".zh(context, "管理标签")) },
+            text = {
+                val currentMeta = MetadataManager.loadMetadata(fileToTag!!)
+                Column {
+                    FlowRow(modifier = Modifier.fillMaxWidth()) {
+                        currentMeta.tags.forEach { tag ->
+                            InputChip(
+                                selected = false,
+                                onClick = { 
+                                    val newTags = currentMeta.tags.filter { it != tag }
+                                    MetadataManager.saveMetadata(fileToTag!!, currentMeta.copy(tags = newTags))
+                                    recordings = audioRecorder.getRecordings() // Force refresh
+                                },
+                                label = { Text(tag) },
+                                trailingIcon = { Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = tagToAdd,
+                        onValueChange = { tagToAdd = it },
+                        label = { Text("Add Tag".zh(context, "添加新标签")) },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (tagToAdd.isNotBlank()) {
+                        val currentMeta = MetadataManager.loadMetadata(fileToTag!!)
+                        if (!currentMeta.tags.contains(tagToAdd)) {
+                            val newTags = currentMeta.tags + tagToAdd
+                            MetadataManager.saveMetadata(fileToTag!!, currentMeta.copy(tags = newTags))
+                            recordings = audioRecorder.getRecordings()
+                        }
+                    }
+                    fileToTag = null
+                }) {
+                    Text("Done".zh(context, "完成"))
+                }
+            }
+        )
+    }
 }
+
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.FlowRow
 
 private fun formatTime(millis: Int): String {
     val totalSeconds = millis / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+}
+
+@Composable
+fun WaveformVisualizer(amplitude: Float, isPaused: Boolean) {
+    val barCount = 32
+    val bars = remember { mutableStateListOf<Float>().apply { repeat(barCount) { add(0.1f) } } }
+    
+    LaunchedEffect(amplitude) {
+        if (!isPaused) {
+            bars.removeAt(0)
+            val normalized = (amplitude / 32768f).coerceIn(0.1f, 1f)
+            bars.add(normalized)
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth(0.8f)
+            .height(64.dp)
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        bars.forEach { barHeight ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(barHeight)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(
+                        if (isPaused) MaterialTheme.colorScheme.outlineVariant 
+                        else MaterialTheme.colorScheme.primary
+                    )
+            )
+        }
+    }
 }

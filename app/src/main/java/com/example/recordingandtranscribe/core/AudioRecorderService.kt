@@ -14,12 +14,15 @@ import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.example.recordingandtranscribe.MainActivity
 import com.example.recordingandtranscribe.core.zh
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.Timer
+import kotlin.concurrent.timerTask
 
 class AudioRecorderService : Service() {
 
@@ -38,11 +41,17 @@ class AudioRecorderService : Service() {
         private val _isPaused = MutableStateFlow(false)
         val isPaused = _isPaused.asStateFlow()
 
+        private val _amplitude = MutableStateFlow(0f)
+        val amplitude = _amplitude.asStateFlow()
+
         var currentFile: File? = null
             private set
     }
 
     private var recorder: MediaRecorder? = null
+    private var amplitudeTimer: Timer? = null
+    private var silenceStartTime: Long = 0
+    private var skipSilenceEnabled = false
 
     override fun onCreate() {
         super.onCreate()
@@ -66,11 +75,15 @@ class AudioRecorderService : Service() {
         val outputFile = File(filesDir, fileName)
         currentFile = outputFile
 
+        val settings = SettingsRepository(this)
+        val bitrate = runBlocking { settings.bitrateFlow.first() }
+        skipSilenceEnabled = runBlocking { settings.skipSilenceFlow.first() }
+
         recorder = MediaRecorder(this).apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.OGG)
             setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
-            setAudioEncodingBitRate(16000)
+            setAudioEncodingBitRate(bitrate)
             setAudioSamplingRate(16000)
             setOutputFile(outputFile.absolutePath)
 
@@ -80,6 +93,7 @@ class AudioRecorderService : Service() {
                 _isRecording.value = true
                 _isPaused.value = false
                 startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                startAmplitudeMonitoring()
             } catch (e: Exception) {
                 e.printStackTrace()
                 stopSelf()
@@ -111,6 +125,38 @@ class AudioRecorderService : Service() {
         }
     }
 
+    private fun startAmplitudeMonitoring() {
+        amplitudeTimer?.cancel()
+        amplitudeTimer = Timer()
+        amplitudeTimer?.scheduleAtFixedRate(timerTask {
+            if (_isRecording.value && !_isPaused.value) {
+                try {
+                    val amp = recorder?.maxAmplitude?.toFloat() ?: 0f
+                    _amplitude.value = amp
+
+                    // Basic Silence Skipping
+                    if (amp < 500f) {
+                        if (silenceStartTime == 0L) silenceStartTime = System.currentTimeMillis()
+                        if (skipSilenceEnabled && System.currentTimeMillis() - silenceStartTime > 3000) {
+                            // Automatically pause if silent for > 3 seconds
+                            pauseRecording()
+                            silenceStartTime = 0
+                        }
+                    } else {
+                        silenceStartTime = 0
+                    }
+                } catch (e: Exception) {}
+            }
+        }, 0, 100)
+    }
+
+    private fun stopAmplitudeMonitoring() {
+        amplitudeTimer?.cancel()
+        amplitudeTimer = null
+        _amplitude.value = 0f
+        silenceStartTime = 0
+    }
+
     private fun stopRecording() {
         try {
             recorder?.apply {
@@ -123,6 +169,7 @@ class AudioRecorderService : Service() {
             recorder = null
             _isRecording.value = false
             _isPaused.value = false
+            stopAmplitudeMonitoring()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
