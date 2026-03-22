@@ -1,19 +1,24 @@
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.nl.summarization.SummarizationService
-import com.google.mlkit.nl.summarization.Summarizer
+import com.google.mlkit.genai.speechrecognition.AudioSource
+import com.google.mlkit.genai.speechrecognition.DownloadStatus
+import com.google.mlkit.genai.speechrecognition.FeatureStatus
+import com.google.mlkit.genai.speechrecognition.SpeechRecognition
+import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
+import com.google.mlkit.genai.speechrecognition.SpeechRecognizerRequest
+import com.google.mlkit.genai.speechrecognition.speechRecognizerOptions
+import com.google.mlkit.genai.speechrecognition.speechRecognizerRequest
+import com.google.mlkit.nl.summarization.Summarization
+import com.google.mlkit.nl.summarization.SummarizationRequest
 import com.google.mlkit.nl.summarization.SummarizerOptions
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
 
 /**
  * Android 16 Gemini Nano (On-Device SLM) Integration.
@@ -33,7 +38,7 @@ class GeminiNanoTranscriber(private val context: Context) {
         if (text.isBlank()) return@withContext Result.failure(Exception("Input text is empty"))
         
         return@withContext try {
-            val summarizer = SummarizationService.getClient(summarizerOptions)
+            val summarizer = Summarization.getClient(summarizerOptions)
             
             // Ensure model is downloaded
             val conditions = DownloadConditions.Builder()
@@ -42,7 +47,8 @@ class GeminiNanoTranscriber(private val context: Context) {
             
             summarizer.downloadModelIfNeeded(conditions).await()
             
-            val result = summarizer.summarize(text).await()
+            val request = SummarizationRequest.Builder(text).build()
+            val result = summarizer.runInference(request).await()
             Result.success(result)
         } catch (e: Exception) {
             Log.e("GeminiNano", "On-device summarization error: ${e.message}")
@@ -52,50 +58,49 @@ class GeminiNanoTranscriber(private val context: Context) {
     
     /**
      * Transcribes an audio file on-device using the GenAI-powered Speech Recognition API.
-     * Note: This uses the Android SpeechRecognizer with GenAI mode enabled.
      */
-    suspend fun transcribeOnDevice(audioFile: File): Result<String> = withContext(Dispatchers.Main) {
-        val deferred = CompletableDeferred<Result<String>>()
-        
-        val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            // Enable GenAI mode if supported (Android 16+ convention)
-            putExtra("android.speech.extra.GENAI_ENABLED", true)
-            // Path to audio file for offline processing
-            putExtra("android.speech.extra.AUDIO_SOURCE_URI", android.net.Uri.fromFile(audioFile).toString())
-        }
-
-        recognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onError(error: Int) {
-                deferred.complete(Result.failure(Exception("Speech recognition error code: $error")))
-                recognizer.destroy()
+    suspend fun transcribeOnDevice(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val options = speechRecognizerOptions {
+                locale = Locale.getDefault()
+                preferredMode = SpeechRecognizerOptions.Mode.MODE_ADVANCED
             }
-
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    deferred.complete(Result.success(matches[0]))
-                } else {
-                    deferred.complete(Result.failure(Exception("No transcription results")))
+            val recognizer = SpeechRecognition.getClient(options)
+            
+            // Check and download model if needed
+            val status = recognizer.checkStatus().await()
+            if (status == FeatureStatus.DOWNLOADABLE || status == FeatureStatus.UNAVAILABLE) {
+                // In a production app, we might want to track progress, but for simplicity we'll just wait for completion.
+                // Note: download is a Flow in ML Kit
+                var downloadSuccess = false
+                recognizer.download().collect { downloadStatus ->
+                    if (downloadStatus is DownloadStatus.DownloadCompleted) {
+                        downloadSuccess = true
+                    }
                 }
-                recognizer.destroy()
+                if (!downloadSuccess) return@withContext Result.failure(Exception("Failed to download Speech GenAI model"))
             }
 
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-
-        recognizer.startListening(intent)
-        
-        try {
-            deferred.await()
+            val pfd = ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY)
+            val request = speechRecognizerRequest {
+                audioSource = AudioSource.fromPfd(pfd)
+            }
+            
+            var finalTranscript = ""
+            recognizer.startRecognition(request).collect { response ->
+                finalTranscript = response.text ?: ""
+            }
+            
+            recognizer.stopRecognition()
+            recognizer.close()
+            
+            if (finalTranscript.isNotEmpty()) {
+                Result.success(finalTranscript)
+            } else {
+                Result.failure(Exception("No transcription result received"))
+            }
         } catch (e: Exception) {
+            Log.e("GeminiNano", "On-device transcription error: ${e.message}")
             Result.failure(e)
         }
     }
