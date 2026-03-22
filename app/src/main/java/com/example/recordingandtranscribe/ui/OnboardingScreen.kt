@@ -85,6 +85,7 @@ fun OnboardingScreen(
                     }
                 )
                 2 -> SuccessPage(
+                    isVisible = pagerState.currentPage == 2,
                     onGetStarted = {
                         scope.launch {
                             settingsRepository.setOnboardingCompleted(true)
@@ -96,29 +97,36 @@ fun OnboardingScreen(
         }
 
         // Top Header / Skip Button
-        if (pagerState.currentPage < 2) {
+        AnimatedVisibility(
+            visible = pagerState.currentPage < 2,
+            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
             TextButton(
                 onClick = {
                     scope.launch {
                         settingsRepository.setOnboardingCompleted(true)
                         onFinished()
                     }
-                },
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                }
             ) {
                 Text("Skip".zh(context, "跳过"), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
         // Navigation Footer
-        Column(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 32.dp),
+            contentAlignment = Alignment.BottomCenter
         ) {
             // Page Indicator
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(bottom = 24.dp)
+                modifier = Modifier.padding(bottom = 88.dp) // 56dp button + 32dp extra spacing
             ) {
                 repeat(3) { iteration ->
                     val isSelected = pagerState.currentPage == iteration
@@ -139,7 +147,11 @@ fun OnboardingScreen(
                 }
             }
 
-            if (pagerState.currentPage == 0) {
+            AnimatedVisibility(
+                visible = pagerState.currentPage == 0,
+                enter = fadeIn() + scaleIn(initialScale = 0.9f),
+                exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = 0.9f)
+            ) {
                 Button(
                     onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                     modifier = Modifier.fillMaxWidth(0.85f).height(56.dp),
@@ -308,12 +320,14 @@ fun PermissionItem(icon: ImageVector, title: String, description: String) {
 }
 
 @Composable
-fun SuccessPage(onGetStarted: () -> Unit) {
+fun SuccessPage(isVisible: Boolean, onGetStarted: () -> Unit) {
     val context = LocalContext.current
     var startAnim by remember { mutableStateOf(false) }
     
-    LaunchedEffect(Unit) {
-        startAnim = true
+    LaunchedEffect(isVisible) {
+        if (isVisible) {
+            startAnim = true
+        }
     }
 
     Column(

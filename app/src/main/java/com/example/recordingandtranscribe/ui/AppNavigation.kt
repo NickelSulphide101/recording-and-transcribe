@@ -23,8 +23,14 @@ fun AppNavigation() {
     
     val isOnboardingCompleted by settingsRepository.isOnboardingCompletedFlow.collectAsState(initial = null)
 
-    // Show nothing until we know if onboarding is completed
-    if (isOnboardingCompleted == null) return
+    // Show default surface background until we know if onboarding is completed
+    if (isOnboardingCompleted == null) {
+        androidx.compose.foundation.layout.Box(
+            modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                .androidx.compose.foundation.background(androidx.compose.material3.MaterialTheme.colorScheme.surface)
+        )
+        return
+    }
 
     NavHost(
         navController = navController, 
