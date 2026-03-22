@@ -5,10 +5,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.recordingandtranscribe.core.GeminiTranscriber
@@ -30,6 +33,15 @@ fun TranscriptionScreen(
     var isTranscribing by remember { mutableStateOf(false) }
     var transcriptionText by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val clipboardManager = LocalClipboardManager.current
+    val txtFile = remember(file) { File(file.parentFile, "${file.nameWithoutExtension}.txt") }
+
+    LaunchedEffect(file) {
+        if (txtFile.exists()) {
+            transcriptionText = txtFile.readText()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -84,6 +96,11 @@ fun TranscriptionScreen(
                         
                         result.onSuccess {
                             transcriptionText = it
+                            try {
+                                txtFile.writeText(it)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                         }.onFailure {
                             errorMessage = it.message ?: "All keys failed to transcribe the audio."
                         }
@@ -101,7 +118,7 @@ fun TranscriptionScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Transcribing...")
                 } else {
-                    Text("Transcribe with Gemini")
+                    Text(if (txtFile.exists()) "Re-Transcribe with Gemini" else "Transcribe with Gemini")
                 }
             }
             
@@ -116,14 +133,27 @@ fun TranscriptionScreen(
             }
             
             if (transcriptionText != null) {
-                Text(
-                    text = "Transcription:",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Transcription:",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    IconButton(onClick = {
+                        clipboardManager.setText(AnnotatedString(transcriptionText!!))
+                    }) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy text")
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                     shape = MaterialTheme.shapes.medium,
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {

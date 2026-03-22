@@ -8,8 +8,8 @@ import java.io.File
 
 class AudioPlayer {
     private var mediaPlayer: MediaPlayer? = null
-    var currentFile: File? = null
-        private set
+    private val _currentFile = MutableStateFlow<File?>(null)
+    val currentFile = _currentFile.asStateFlow()
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
@@ -25,7 +25,7 @@ class AudioPlayer {
 
     fun playFile(file: File, onCompletion: () -> Unit = {}) {
         stop()
-        currentFile = file
+        _currentFile.value = file
         try {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(file.absolutePath)
@@ -89,7 +89,7 @@ class AudioPlayer {
     fun stop() {
         mediaPlayer?.release()
         mediaPlayer = null
-        currentFile = null
+        _currentFile.value = null
         _isPlaying.value = false
         _progress.value = 0
         _duration.value = 0

@@ -37,7 +37,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     val isPlaying by audioPlayer.isPlaying.collectAsState()
     val progress by audioPlayer.progress.collectAsState()
     val duration by audioPlayer.duration.collectAsState()
-    val currentFile = audioPlayer.currentFile
+    val currentFile by audioPlayer.currentFile.collectAsState()
 
     var fileToRename by remember { mutableStateOf<File?>(null) }
     var newFileName by remember { mutableStateOf("") }
@@ -81,6 +81,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     val finalName = if (newFileName.endsWith(".m4a")) newFileName else "$newFileName.m4a"
                     val newFile = File(currentF.parentFile, finalName)
                     if (currentF.renameTo(newFile)) {
+                        val oldTxtFile = File(currentF.parentFile, "${currentF.nameWithoutExtension}.txt")
+                        if (oldTxtFile.exists()) {
+                            oldTxtFile.renameTo(File(currentF.parentFile, "${newFile.nameWithoutExtension}.txt"))
+                        }
                         recordings = audioRecorder.getRecordings()
                         // Stop playback if we renamed the currently playing file, as path changes
                         if (currentFile == currentF) {
@@ -277,6 +281,8 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                     if (currentFile == file) {
                                                         audioPlayer.stop()
                                                     }
+                                                    val txtFile = File(file.parentFile, "${file.nameWithoutExtension}.txt")
+                                                    if (txtFile.exists()) txtFile.delete()
                                                     file.delete()
                                                     recordings = audioRecorder.getRecordings()
                                                 }
