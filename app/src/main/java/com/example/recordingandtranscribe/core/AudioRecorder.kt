@@ -14,7 +14,7 @@ class AudioRecorder(private val context: Context) {
         private set
 
     fun startRecording(): File? {
-        val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.m4a"
+        val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.ogg"
         val outputFile = File(context.filesDir, fileName)
         currentOutputFile = outputFile
 
@@ -25,9 +25,9 @@ class AudioRecorder(private val context: Context) {
             MediaRecorder()
         }.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            setAudioEncoder(MediaRecorder.AudioEncoder.HE_AAC)
-            setAudioEncodingBitRate(24000)
+            setOutputFormat(MediaRecorder.OutputFormat.OGG)
+            setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
+            setAudioEncodingBitRate(16000)
             setAudioSamplingRate(16000)
             setOutputFile(outputFile.absolutePath)
             
@@ -56,7 +56,7 @@ class AudioRecorder(private val context: Context) {
     }
 
     fun getRecordings(): List<File> {
-        val files = context.filesDir.listFiles { _, name -> name.endsWith(".m4a") }
+        val files = context.filesDir.listFiles { _, name -> name.endsWith(".ogg") || name.endsWith(".m4a") }
         return files?.sortedByDescending { it.lastModified() } ?: emptyList()
     }
 }

@@ -13,6 +13,7 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
         val keysToTry = apiKeys.shuffled()
         var lastError: Exception? = null
         val audioBytes = audioFile.readBytes()
+        val mimeType = if (audioFile.name.endsWith(".m4a")) "audio/mp4" else "audio/ogg"
         val prompt = "Please transcribe the following audio exactly as spoken. If there are multiple speakers, label them if possible. Just return the transcription."
 
         for (key in keysToTry) {
@@ -23,7 +24,7 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
                 )
                 val response = generativeModel.generateContent(
                     content {
-                        blob("audio/mp4", audioBytes)
+                        blob(mimeType, audioBytes)
                         text(prompt)
                     }
                 )

@@ -83,7 +83,8 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
             confirmButton = {
                 FilledTonalButton(onClick = {
                     val currentF = fileToRename!!
-                    val finalName = if (newFileName.endsWith(".m4a")) newFileName else "$newFileName.m4a"
+                    val extension = if (currentF.name.endsWith(".m4a")) ".m4a" else ".ogg"
+                    val finalName = if (newFileName.endsWith(extension)) newFileName else "$newFileName$extension"
                     val newFile = File(currentF.parentFile, finalName)
                     if (currentF.renameTo(newFile)) {
                         val oldTxtFile = File(currentF.parentFile, "${currentF.nameWithoutExtension}.txt")

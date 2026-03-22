@@ -4,7 +4,7 @@ A robust, modern native Android application built with Jetpack Compose. It allow
 
 ## ✨ Key Features
 
-* **Advanced Voice Recording**: One-tap recording using Android's `MediaRecorder` API. Audio is encoded in **HE-AAC (High-Efficiency AAC)** at 16kHz/24Kbps, guaranteeing crisp human voice legibility while drastically reducing `.m4a` file sizes to save storage and upload bandwidth.
+* **Advanced Voice Recording**: One-tap recording using Android's `MediaRecorder` API. Audio is encoded in **Opus** format at 16kHz/16Kbps, guaranteeing crisp human voice legibility while drastically reducing `.ogg` file sizes for ultimate storage efficiency and upload bandwidth savings.
 * **Full-Featured Audio Player**: Click on any recording in the history list to reveal a pristine playback console at the bottom of the screen. Includes play/pause, seek slider, ±10s skip, and previous/next track functionality.
 * **Recording Management**: Long-press or click the "more" (⋮) icon on any recording to cleanly **Rename** or **Delete** the audio.
 * **AI Transcription & Local Caching**: Send your audio to Gemini for an exact text transcription. Once transcribed, the result is **cached locally** as a hidden `.txt` file, ensuring instantaneous re-loads in the future without wasting API quota or waiting for the network.
