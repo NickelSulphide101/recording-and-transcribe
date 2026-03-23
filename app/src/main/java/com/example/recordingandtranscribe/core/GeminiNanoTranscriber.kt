@@ -19,6 +19,7 @@ import com.google.mlkit.genai.summarization.SummarizationResult
 import com.google.mlkit.genai.summarization.SummarizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.tasks.await
@@ -49,7 +50,9 @@ class GeminiNanoTranscriber(private val context: Context) {
             val status = summarizer.checkFeatureStatus().await()
             if (status != FeatureStatus.AVAILABLE) {
                 Log.d("GeminiNano", "Summarization model not available (status: $status). Starting download...")
-                summarizer.downloadModel().await()
+                summarizer.download().first {
+                    it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
+                }
                 // Re-check after download
                 val postDownloadStatus = summarizer.checkFeatureStatus().await()
                 if (postDownloadStatus != FeatureStatus.AVAILABLE) {
