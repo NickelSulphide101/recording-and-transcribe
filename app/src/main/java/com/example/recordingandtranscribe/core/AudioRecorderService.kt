@@ -82,15 +82,15 @@ class AudioRecorderService : Service() {
             val bitrate = settings.bitrateFlow.first()
             skipSilenceEnabled = settings.skipSilenceFlow.first()
             
-            val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.ogg"
+            val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.m4a"
             val outputFile = File(filesDir, fileName)
             currentFile = outputFile
 
             launch(Dispatchers.Main) {
                 recorder = MediaRecorder(this@AudioRecorderService).apply {
                     setAudioSource(MediaRecorder.AudioSource.MIC)
-                    setOutputFormat(MediaRecorder.OutputFormat.OGG)
-                    setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                     setAudioEncodingBitRate(bitrate)
                     setAudioSamplingRate(16000)
                     setOutputFile(outputFile.absolutePath)

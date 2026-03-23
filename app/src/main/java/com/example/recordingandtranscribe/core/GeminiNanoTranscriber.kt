@@ -80,11 +80,19 @@ class GeminiNanoTranscriber(private val context: Context) {
      */
     suspend fun transcribeOnDevice(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
         val configsToTry = listOf(
-            // 1. Try Advanced mode with system locale (The premium Gemini Nano experience)
+            // 1. Try Advanced mode with system locale
             SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.getDefault(),
-            // 2. Fallback to Basic mode with system locale (High quality, broader device support)
+            // 2. Try Advanced mode with explicit Simplified Chinese (cmn-Hans-CN)
+            SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.SIMPLIFIED_CHINESE,
+            SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.forLanguageTag("zh-CN"),
+            SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.forLanguageTag("zh-Hans-CN"),
+            
+            // 3. Fallback to Basic mode with system locale
             SpeechRecognizerOptions.Mode.MODE_BASIC to Locale.getDefault(),
-            // 3. Last resort: Basic mode with English (US)
+            // 4. Fallback to Basic mode with Simplified Chinese
+            SpeechRecognizerOptions.Mode.MODE_BASIC to Locale.SIMPLIFIED_CHINESE,
+            
+            // 5. Last resort: Basic mode with English (US)
             SpeechRecognizerOptions.Mode.MODE_BASIC to Locale.US
         )
 
