@@ -138,6 +138,7 @@ fun TranscriptionScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Button 1: Speech to Text
                 Button(
                     onClick = {
                         val apiKeysList = (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -148,50 +149,29 @@ fun TranscriptionScreen(
                         isProcessing = true
                         errorMessage = null
                         coroutineScope.launch {
-                            val transcriber = if (apiKeysList.isNotEmpty()) {
-                                GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
-                            } else {
-                                null
-                            }
-                            val nanoTranscriber = GeminiNanoTranscriber(context)
-                            
-                            val transcriptResult = if (useGeminiNano) {
-                                nanoTranscriber.transcribeOnDevice(file)
-                            } else {
-                                transcriber?.transcribeAudio(file) ?: Result.failure(Exception("API Key required"))
-                            }
-                            
-                            val transcriptText = transcriptResult.getOrNull() ?: metadata.transcript ?: ""
+                            try {
+                                val transcriber = if (apiKeysList.isNotEmpty()) {
+                                    GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
+                                } else {
+                                    null
+                                }
+                                val nanoTranscriber = GeminiNanoTranscriber(context)
+                                
+                                val transcriptResult = if (useGeminiNano) {
+                                    nanoTranscriber.transcribeOnDevice(file)
+                                } else {
+                                    transcriber?.transcribeAudio(file) ?: Result.failure(Exception("API Key required"))
+                                }
 
-                            val summaryResult = if (useGeminiNano) {
-                                nanoTranscriber.generateOnDeviceSummary(transcriptText)
-                            } else {
-                                transcriber?.generateSummary(transcriptText) ?: Result.failure(Exception("API Key required"))
-                            }
-                            val actionItemsResult = transcriber?.generateActionItems(transcriptText) ?: Result.failure(Exception("API Key required"))
-                            val keywordsResult = transcriber?.generateKeywords(transcriptText) ?: Result.failure(Exception("API Key required"))
-                            val emotionResult = transcriber?.generateEmotionAnalysis(transcriptText) ?: Result.failure(Exception("API Key required"))
-                            val privacyResult = transcriber?.generatePrivacyMaskedTranscript(transcriptText) ?: Result.failure(Exception("API Key required"))
-
-                            val newTranscript = if (privacyResult.isSuccess) {
-                                privacyResult.getOrNull() ?: transcriptText
-                            } else {
-                                transcriptText.ifEmpty { null }
-                            }
-
-                            val newMetadata = metadata.copy(
-                                transcript = newTranscript,
-                                summary = summaryResult.getOrNull() ?: metadata.summary,
-                                actionItems = actionItemsResult.getOrNull() ?: metadata.actionItems,
-                                keywords = keywordsResult.getOrNull() ?: metadata.keywords,
-                                emotionAnalysis = emotionResult.getOrNull() ?: metadata.emotionAnalysis,
-                                isPrivacyMasked = privacyResult.isSuccess
-                            )
-                            metadata = newMetadata
-                            MetadataManager.saveMetadata(file, newMetadata)
-                            isProcessing = false
-                            if (transcriptResult.isFailure) {
-                                errorMessage = transcriptResult.exceptionOrNull()?.message ?: "AI processing failed.".zh(context, "AI 处理失败。")
+                                if (transcriptResult.isSuccess) {
+                                    val newMetadata = metadata.copy(transcript = transcriptResult.getOrNull())
+                                    metadata = newMetadata
+                                    MetadataManager.saveMetadata(file, newMetadata)
+                                } else {
+                                    errorMessage = transcriptResult.exceptionOrNull()?.message ?: "Transcription failed.".zh(context, "转录失败。")
+                                }
+                            } finally {
+                                isProcessing = false
                             }
                         }
                     },
@@ -202,9 +182,90 @@ fun TranscriptionScreen(
                     if (isProcessing) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                     } else {
+                        Icon(Icons.Default.Mic, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Transcribe".zh(context, "语音转文字"))
+                    }
+                }
+
+                // Button 2: AI Analysis
+                Button(
+                    onClick = {
+                        val apiKeysList = (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        if (!useGeminiNano && apiKeysList.isEmpty()) {
+                            errorMessage = "Please set Gemini API Key in Settings.".zh(context, "请先在设置中配置 Gemini API 密钥。")
+                            return@Button
+                        }
+                        isProcessing = true
+                        errorMessage = null
+                        coroutineScope.launch {
+                            try {
+                                val transcriber = if (apiKeysList.isNotEmpty()) {
+                                    GeminiTranscriber(apiKeysList, modelName ?: "gemini-1.5-flash")
+                                } else {
+                                    null
+                                }
+                                val nanoTranscriber = GeminiNanoTranscriber(context)
+
+                                // Ensure we have transcription first
+                                var currentTranscript = metadata.transcript ?: ""
+                                if (currentTranscript.isEmpty()) {
+                                    val transcriptResult = if (useGeminiNano) {
+                                        nanoTranscriber.transcribeOnDevice(file)
+                                    } else {
+                                        transcriber?.transcribeAudio(file) ?: Result.failure(Exception("API Key required"))
+                                    }
+                                    currentTranscript = transcriptResult.getOrNull() ?: ""
+                                    if (currentTranscript.isEmpty()) {
+                                        errorMessage = "Please transcribe first or check API key.".zh(context, "请先进行转录或检查 API 密钥。")
+                                        return@launch
+                                    }
+                                }
+                                
+                                val summaryResult = if (useGeminiNano) {
+                                    nanoTranscriber.generateOnDeviceSummary(currentTranscript)
+                                } else {
+                                    transcriber?.generateSummary(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                }
+                                val actionItemsResult = transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val keywordsResult = transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val emotionResult = transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val privacyResult = transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
+
+                                val newTranscript = if (privacyResult.isSuccess) {
+                                    privacyResult.getOrNull() ?: currentTranscript
+                                } else {
+                                    currentTranscript
+                                }
+
+                                val newMetadata = metadata.copy(
+                                    transcript = newTranscript,
+                                    summary = summaryResult.getOrNull() ?: metadata.summary,
+                                    actionItems = actionItemsResult.getOrNull() ?: metadata.actionItems,
+                                    keywords = keywordsResult.getOrNull() ?: metadata.keywords,
+                                    emotionAnalysis = emotionResult.getOrNull() ?: metadata.emotionAnalysis,
+                                    isPrivacyMasked = privacyResult.isSuccess
+                                )
+                                metadata = newMetadata
+                                MetadataManager.saveMetadata(file, newMetadata)
+                            } catch (e: Exception) {
+                                errorMessage = e.message ?: "Analysis failed.".zh(context, "分析失败。")
+                            } finally {
+                                isProcessing = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = MaterialTheme.shapes.large,
+                    enabled = !isProcessing,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                ) {
+                    if (isProcessing) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("AI Insights".zh(context, "AI 洞察"))
+                        Text("AI Analysis".zh(context, "AI 总结/分析"))
                     }
                 }
             }
