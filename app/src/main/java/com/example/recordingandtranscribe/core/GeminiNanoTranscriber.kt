@@ -49,14 +49,12 @@ class GeminiNanoTranscriber(private val context: Context) {
             // Check summarization feature status
             val status = summarizer.checkFeatureStatus().await()
             if (status != FeatureStatus.AVAILABLE) {
-                Log.d("GeminiNano", "Summarization model not available (status: $status). Starting download...")
-                summarizer.download().first {
-                    it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
-                }
-                // Re-check after download
+                Log.d("GeminiNano", "Summarization model not available (status: $status). Starting preparation...")
+                summarizer.prepareInferenceEngine().await()
+                // Re-check after preparation
                 val postDownloadStatus = summarizer.checkFeatureStatus().await()
                 if (postDownloadStatus != FeatureStatus.AVAILABLE) {
-                    return@withContext Result.failure(Exception("Summarization model download failed or model still not available (Status: $postDownloadStatus)."))
+                    return@withContext Result.failure(Exception("Summarization model preparation failed or model still not available (Status: $postDownloadStatus)."))
                 }
             }
             
