@@ -76,77 +76,101 @@ class GeminiNanoTranscriber(private val context: Context) {
     
     /**
      * Transcribes an audio file on-device using the GenAI-powered Speech Recognition API.
+     * Implements a fallback mechanism: Advanced (Gemini Nano) -> Basic (Traditional On-Device).
      */
     suspend fun transcribeOnDevice(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
-        return@withContext try {
-            val options = speechRecognizerOptions {
+        val configsToTry = listOf(
+            // 1. Try Advanced mode with system locale (The premium Gemini Nano experience)
+            speechRecognizerOptions {
                 locale = Locale.getDefault()
                 preferredMode = SpeechRecognizerOptions.Mode.MODE_ADVANCED
+            },
+            // 2. Fallback to Basic mode with system locale (High quality, broader device support)
+            speechRecognizerOptions {
+                locale = Locale.getDefault()
+                preferredMode = SpeechRecognizerOptions.Mode.MODE_BASIC
+            },
+            // 3. Last resort: Basic mode with English (US)
+            speechRecognizerOptions {
+                locale = Locale.US
+                preferredMode = SpeechRecognizerOptions.Mode.MODE_BASIC
             }
-            val recognizer = SpeechRecognition.getClient(options)
-            
-            // Check speech recognition status
-            val status = recognizer.checkStatus()
-            if (status != FeatureStatus.AVAILABLE) {
-                Log.d("GeminiNano", "Speech GenAI model not available (status: $status). Starting download...")
+        )
+
+        var lastError: String? = null
+
+        for (options in configsToTry) {
+            try {
+                val recognizer = SpeechRecognition.getClient(options)
+                val status = recognizer.checkStatus()
                 
-                // Wait for terminal state in download flow
-                val terminalStatus = recognizer.download().first {
-                    it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
+                if (status == FeatureStatus.UNAVAILABLE) {
+                    Log.d("GeminiNano", "Mode ${options.preferredMode} with ${options.locale} is unavailable. Trying next config...")
+                    continue
                 }
 
-                if (terminalStatus is DownloadStatus.DownloadFailed) {
-                    return@withContext Result.failure(Exception("Failed to download Speech GenAI model: ${terminalStatus.e.message}. Please ensure you have a stable internet connection."))
+                if (status != FeatureStatus.AVAILABLE) {
+                    Log.d("GeminiNano", "Model download needed for ${options.preferredMode}. Starting...")
+                    val terminalStatus = recognizer.download().first {
+                        it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
+                    }
+
+                    if (terminalStatus is DownloadStatus.DownloadFailed) {
+                        lastError = "Download failed: ${terminalStatus.e.message}"
+                        Log.w("GeminiNano", "Download failed for ${options.preferredMode}: $lastError")
+                        continue
+                    }
+                }
+
+                // If we reach here, model is available or downloaded successfully
+                val pfd = ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                val request = speechRecognizerRequest {
+                    audioSource = AudioSource.fromPfd(pfd)
                 }
                 
-                // Double check final status
-                val finalStatus = recognizer.checkStatus()
-                if (finalStatus != FeatureStatus.AVAILABLE) {
-                    return@withContext Result.failure(Exception("Speech model download finished but status is still $finalStatus."))
-                }
-            }
-
-            val pfd = ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY)
-            val request = speechRecognizerRequest {
-                audioSource = AudioSource.fromPfd(pfd)
-            }
-            
-            var finalTranscript = ""
-            var error: Exception? = null
-            
-            // Start recognition flow
-            recognizer.startRecognition(request)
-                .takeWhile { response ->
-                    when (response) {
-                        is SpeechRecognizerResponse.ErrorResponse -> {
-                            error = response.e
-                            false
+                var finalTranscript = ""
+                var recognitionError: Exception? = null
+                
+                recognizer.startRecognition(request)
+                    .takeWhile { response ->
+                        when (response) {
+                            is SpeechRecognizerResponse.ErrorResponse -> {
+                                recognitionError = response.e
+                                false
+                            }
+                            is SpeechRecognizerResponse.CompletedResponse -> false
+                            else -> true
                         }
-                        is SpeechRecognizerResponse.CompletedResponse -> false
-                        else -> true
                     }
-                }
-                .collect { response ->
-                    when (response) {
-                        is SpeechRecognizerResponse.FinalTextResponse -> finalTranscript = response.text
-                        is SpeechRecognizerResponse.PartialTextResponse -> finalTranscript = response.text
-                        else -> {}
+                    .collect { response ->
+                        when (response) {
+                            is SpeechRecognizerResponse.FinalTextResponse -> finalTranscript = response.text
+                            is SpeechRecognizerResponse.PartialTextResponse -> finalTranscript = response.text
+                            else -> {}
+                        }
                     }
+                
+                recognizer.stopRecognition()
+                recognizer.close()
+                
+                if (recognitionError != null) {
+                    lastError = recognitionError?.message
+                    continue
                 }
-            
-            recognizer.stopRecognition()
-            recognizer.close()
-            
-            if (error != null) {
-                Result.failure(error!!)
-            } else if (finalTranscript.isNotEmpty()) {
-                Result.success(finalTranscript)
-            } else {
-                Result.failure(Exception("No transcription result received from on-device model."))
+
+                if (finalTranscript.isNotEmpty()) {
+                    Log.d("GeminiNano", "Transcription successful using ${options.preferredMode} mode.")
+                    return@withContext Result.success(finalTranscript)
+                } else {
+                    lastError = "Empty result"
+                }
+
+            } catch (e: Exception) {
+                lastError = e.message
+                Log.e("GeminiNano", "Error with config ${options.preferredMode}: $lastError")
             }
-        } catch (e: Exception) {
-            Log.e("GeminiNano", "On-device transcription error: ${e.message}")
-            Result.failure(Exception("Transcription error: ${e.message}"))
         }
+
+        Result.failure(Exception("On-device transcription failed even after fallbacks. Last error: $lastError. This device might not support the required AI models."))
     }
 }
