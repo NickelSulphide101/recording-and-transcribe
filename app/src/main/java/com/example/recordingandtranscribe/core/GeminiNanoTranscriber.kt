@@ -4,8 +4,10 @@ import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.genai.common.DownloadCallback
 import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
+import com.google.mlkit.genai.common.GenAiException
 import com.google.mlkit.genai.common.audio.AudioSource
 import com.google.mlkit.genai.speechrecognition.SpeechRecognition
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
@@ -49,12 +51,17 @@ class GeminiNanoTranscriber(private val context: Context) {
             // Check summarization feature status
             val status = summarizer.checkFeatureStatus().await()
             if (status != FeatureStatus.AVAILABLE) {
-                Log.d("GeminiNano", "Summarization model not available (status: $status). Starting preparation...")
-                summarizer.prepareInferenceEngine().await()
-                // Re-check after preparation
+                Log.d("GeminiNano", "Summarization model not available (status: $status). Starting download...")
+                summarizer.downloadFeature(object : DownloadCallback {
+                    override fun onDownloadStarted(bytesToDownload: Long) {}
+                    override fun onDownloadProgress(totalBytesDownloaded: Long) {}
+                    override fun onDownloadCompleted() {}
+                    override fun onDownloadFailed(e: GenAiException) {}
+                }).await()
+                // Re-check after download
                 val postDownloadStatus = summarizer.checkFeatureStatus().await()
                 if (postDownloadStatus != FeatureStatus.AVAILABLE) {
-                    return@withContext Result.failure(Exception("Summarization model preparation failed or model still not available (Status: $postDownloadStatus)."))
+                    return@withContext Result.failure(Exception("Summarization model download failed or model still not available (Status: $postDownloadStatus)."))
                 }
             }
             
