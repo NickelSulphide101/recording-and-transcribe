@@ -45,10 +45,16 @@ class GeminiNanoTranscriber(private val context: Context) {
         return@withContext try {
             val summarizer = Summarization.getClient(getSummarizerOptions())
             
-            // checkFeatureStatus returns ListenableFuture<Int> in GenAI Summarization
+            // Check summarization feature status
             val status = summarizer.checkFeatureStatus().await()
             if (status != FeatureStatus.AVAILABLE) {
-                // Simplified handle
+                Log.d("GeminiNano", "Summarization model not available (status: $status). Starting download...")
+                summarizer.downloadModel().await()
+                // Re-check after download
+                val postDownloadStatus = summarizer.checkFeatureStatus().await()
+                if (postDownloadStatus != FeatureStatus.AVAILABLE) {
+                    return@withContext Result.failure(Exception("Summarization model download failed or model still not available (Status: $postDownloadStatus)."))
+                }
             }
             
             val request = SummarizationRequest.builder(text).build()
@@ -56,7 +62,7 @@ class GeminiNanoTranscriber(private val context: Context) {
             Result.success(result.summary)
         } catch (e: Exception) {
             Log.e("GeminiNano", "On-device summarization error: ${e.message}")
-            Result.failure(e)
+            Result.failure(Exception("Summarization error: ${e.message}"))
         }
     }
     
@@ -71,16 +77,25 @@ class GeminiNanoTranscriber(private val context: Context) {
             }
             val recognizer = SpeechRecognition.getClient(options)
             
-            // Check status (suspend fun, NO .await())
+            // Check speech recognition status
             val status = recognizer.checkStatus()
-            if (status == FeatureStatus.DOWNLOADABLE || status == FeatureStatus.UNAVAILABLE) {
-                var downloadSuccess = false
-                recognizer.download().collect { downloadStatus ->
-                    if (downloadStatus is DownloadStatus.DownloadCompleted) {
-                        downloadSuccess = true
-                    }
+            if (status != FeatureStatus.AVAILABLE) {
+                Log.d("GeminiNano", "Speech GenAI model not available (status: $status). Starting download...")
+                
+                // Wait for terminal state in download flow
+                val terminalStatus = recognizer.download().first {
+                    it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
                 }
-                if (!downloadSuccess) return@withContext Result.failure(Exception("Failed to download Speech GenAI model"))
+
+                if (terminalStatus is DownloadStatus.DownloadFailed) {
+                    return@withContext Result.failure(Exception("Failed to download Speech GenAI model: ${terminalStatus.e.message}. Please ensure you have a stable internet connection."))
+                }
+                
+                // Double check final status
+                val finalStatus = recognizer.checkStatus()
+                if (finalStatus != FeatureStatus.AVAILABLE) {
+                    return@withContext Result.failure(Exception("Speech model download finished but status is still $finalStatus."))
+                }
             }
 
             val pfd = ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -90,25 +105,23 @@ class GeminiNanoTranscriber(private val context: Context) {
             
             var finalTranscript = ""
             var error: Exception? = null
+            
+            // Start recognition flow
             recognizer.startRecognition(request)
                 .takeWhile { response ->
-                    if (response is SpeechRecognizerResponse.ErrorResponse) {
-                        error = response.e
-                        false
-                    } else if (response is SpeechRecognizerResponse.CompletedResponse) {
-                        false
-                    } else {
-                        true
+                    when (response) {
+                        is SpeechRecognizerResponse.ErrorResponse -> {
+                            error = response.e
+                            false
+                        }
+                        is SpeechRecognizerResponse.CompletedResponse -> false
+                        else -> true
                     }
                 }
                 .collect { response ->
                     when (response) {
-                        is SpeechRecognizerResponse.FinalTextResponse -> {
-                            finalTranscript = response.text
-                        }
-                        is SpeechRecognizerResponse.PartialTextResponse -> {
-                            finalTranscript = response.text
-                        }
+                        is SpeechRecognizerResponse.FinalTextResponse -> finalTranscript = response.text
+                        is SpeechRecognizerResponse.PartialTextResponse -> finalTranscript = response.text
                         else -> {}
                     }
                 }
@@ -121,11 +134,11 @@ class GeminiNanoTranscriber(private val context: Context) {
             } else if (finalTranscript.isNotEmpty()) {
                 Result.success(finalTranscript)
             } else {
-                Result.failure(Exception("No transcription result received"))
+                Result.failure(Exception("No transcription result received from on-device model."))
             }
         } catch (e: Exception) {
             Log.e("GeminiNano", "On-device transcription error: ${e.message}")
-            Result.failure(e)
+            Result.failure(Exception("Transcription error: ${e.message}"))
         }
     }
 }
