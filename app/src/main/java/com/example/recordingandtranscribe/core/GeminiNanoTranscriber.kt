@@ -81,43 +81,38 @@ class GeminiNanoTranscriber(private val context: Context) {
     suspend fun transcribeOnDevice(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
         val configsToTry = listOf(
             // 1. Try Advanced mode with system locale (The premium Gemini Nano experience)
-            speechRecognizerOptions {
-                locale = Locale.getDefault()
-                preferredMode = SpeechRecognizerOptions.Mode.MODE_ADVANCED
-            },
+            SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.getDefault(),
             // 2. Fallback to Basic mode with system locale (High quality, broader device support)
-            speechRecognizerOptions {
-                locale = Locale.getDefault()
-                preferredMode = SpeechRecognizerOptions.Mode.MODE_BASIC
-            },
+            SpeechRecognizerOptions.Mode.MODE_BASIC to Locale.getDefault(),
             // 3. Last resort: Basic mode with English (US)
-            speechRecognizerOptions {
-                locale = Locale.US
-                preferredMode = SpeechRecognizerOptions.Mode.MODE_BASIC
-            }
+            SpeechRecognizerOptions.Mode.MODE_BASIC to Locale.US
         )
 
         var lastError: String? = null
 
-        for (options in configsToTry) {
+        for ((mode, locale) in configsToTry) {
             try {
+                val options = speechRecognizerOptions {
+                    this.locale = locale
+                    this.preferredMode = mode
+                }
                 val recognizer = SpeechRecognition.getClient(options)
                 val status = recognizer.checkStatus()
                 
                 if (status == FeatureStatus.UNAVAILABLE) {
-                    Log.d("GeminiNano", "Mode ${options.preferredMode} with ${options.locale} is unavailable. Trying next config...")
+                    Log.d("GeminiNano", "Mode $mode with $locale is unavailable. Trying next config...")
                     continue
                 }
 
                 if (status != FeatureStatus.AVAILABLE) {
-                    Log.d("GeminiNano", "Model download needed for ${options.preferredMode}. Starting...")
+                    Log.d("GeminiNano", "Model download needed for $mode. Starting...")
                     val terminalStatus = recognizer.download().first {
                         it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
                     }
 
                     if (terminalStatus is DownloadStatus.DownloadFailed) {
                         lastError = "Download failed: ${terminalStatus.e.message}"
-                        Log.w("GeminiNano", "Download failed for ${options.preferredMode}: $lastError")
+                        Log.w("GeminiNano", "Download failed for $mode: $lastError")
                         continue
                     }
                 }
@@ -159,7 +154,7 @@ class GeminiNanoTranscriber(private val context: Context) {
                 }
 
                 if (finalTranscript.isNotEmpty()) {
-                    Log.d("GeminiNano", "Transcription successful using ${options.preferredMode} mode.")
+                    Log.d("GeminiNano", "Transcription successful using $mode mode.")
                     return@withContext Result.success(finalTranscript)
                 } else {
                     lastError = "Empty result"
@@ -167,7 +162,7 @@ class GeminiNanoTranscriber(private val context: Context) {
 
             } catch (e: Exception) {
                 lastError = e.message
-                Log.e("GeminiNano", "Error with config ${options.preferredMode}: $lastError")
+                Log.e("GeminiNano", "Error with config $mode: $lastError")
             }
         }
 
