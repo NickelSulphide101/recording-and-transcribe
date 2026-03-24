@@ -48,11 +48,15 @@ class AudioRecorderService : Service() {
         private val _amplitude = MutableStateFlow(0f)
         val amplitude = _amplitude.asStateFlow()
 
+        private val _liveTranscript = MutableStateFlow("")
+        val liveTranscript = _liveTranscript.asStateFlow()
+
         var currentFile: File? = null
             private set
     }
 
     private var recorder: MediaRecorder? = null
+    private var speechRecognizer: android.speech.SpeechRecognizer? = null
     private var amplitudeTimer: Timer? = null
     private var silenceStartTime: Long = 0
     private var skipSilenceEnabled = false
@@ -87,6 +91,9 @@ class AudioRecorderService : Service() {
             currentFile = outputFile
 
             launch(Dispatchers.Main) {
+                _liveTranscript.value = ""
+                startSpeechRecognition()
+                
                 recorder = MediaRecorder(this@AudioRecorderService).apply {
                     setAudioSource(MediaRecorder.AudioSource.MIC)
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
@@ -169,6 +176,9 @@ class AudioRecorderService : Service() {
 
     private fun stopRecording() {
         try {
+            speechRecognizer?.stopListening()
+            speechRecognizer?.destroy()
+            speechRecognizer = null
             recorder?.apply {
                 stop()
                 release()
@@ -182,6 +192,56 @@ class AudioRecorderService : Service() {
             stopAmplitudeMonitoring()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
+        }
+    }
+
+    private fun startSpeechRecognition() {
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) return
+        
+        speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this).apply {
+            setRecognitionListener(object : android.speech.RecognitionListener {
+                override fun onReadyForSpeech(params: android.os.Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onError(error: Int) {
+                    if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        // Restart if it times out
+                        if (_isRecording.value && !_isPaused.value) {
+                            startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                            })
+                        }
+                    }
+                }
+                override fun onResults(results: android.os.Bundle?) {
+                    val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                    if (!matches.isNullOrEmpty()) {
+                        _liveTranscript.value = matches[0]
+                    }
+                    // Restart listening for continuous flow
+                    if (_isRecording.value && !_isPaused.value) {
+                        startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                        })
+                    }
+                }
+                override fun onPartialResults(partialResults: android.os.Bundle?) {
+                    val matches = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                    if (!matches.isNullOrEmpty()) {
+                        _liveTranscript.value = matches[0]
+                    }
+                }
+                override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+            })
+            
+            startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            })
         }
     }
 

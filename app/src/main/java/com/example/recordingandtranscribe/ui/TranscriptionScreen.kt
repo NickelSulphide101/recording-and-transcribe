@@ -58,6 +58,8 @@ fun TranscriptionScreen(
     val useGeminiNano by settingsRepository.useGeminiNanoFlow.collectAsState(initial = false)
     
     var isProcessing by remember { mutableStateOf(false) }
+    var isAsking by remember { mutableStateOf(false) }
+    var chatQuery by remember { mutableStateOf("") }
     var metadata by remember { mutableStateOf(MetadataManager.loadMetadata(file)) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -65,12 +67,13 @@ fun TranscriptionScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val clipboardManager = LocalClipboardManager.current
     
-    // Separate scroll states for each tab to fix shared scroll position bug
+    // Separate scroll states for each tab
     val transcriptScroll = rememberScrollState()
     val summaryScroll = rememberScrollState()
     val taskScroll = rememberScrollState()
     val emotionScroll = rememberScrollState()
     val privacyScroll = rememberScrollState()
+    val chatScroll = rememberScrollState()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -104,29 +107,42 @@ fun TranscriptionScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = "Info",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text("File Size".zh(context, "文件大小"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = "Info",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("File Size".zh(context, "文件大小"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        }
                     }
-                    Spacer(modifier = Modifier.weight(1f))
-                    if (metadata.keywords.isNotEmpty()) {
-                        metadata.keywords.take(2).forEach { kw ->
-                            SuggestionChip(
-                                onClick = {},
-                                label = { Text(kw, style = MaterialTheme.typography.labelSmall) },
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
+                    
+                    if (metadata.tags.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            metadata.tags.forEach { tag ->
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text("#$tag", style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
+                        }
+                    } else if (metadata.keywords.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            metadata.keywords.take(3).forEach { kw ->
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text(kw, style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -232,6 +248,7 @@ fun TranscriptionScreen(
                                 val keywordsResult = transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 val emotionResult = transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 val privacyResult = transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val tagsResult = transcriber?.generateSmartTags(currentTranscript) ?: Result.success(emptyList())
 
                                 val newTranscript = if (privacyResult.isSuccess) {
                                     privacyResult.getOrNull() ?: currentTranscript
@@ -245,7 +262,8 @@ fun TranscriptionScreen(
                                     actionItems = actionItemsResult.getOrNull() ?: metadata.actionItems,
                                     keywords = keywordsResult.getOrNull() ?: metadata.keywords,
                                     emotionAnalysis = emotionResult.getOrNull() ?: metadata.emotionAnalysis,
-                                    isPrivacyMasked = privacyResult.isSuccess
+                                    isPrivacyMasked = privacyResult.isSuccess,
+                                    tags = tagsResult.getOrNull() ?: metadata.tags
                                 )
                                 metadata = newMetadata
                                 MetadataManager.saveMetadata(file, newMetadata)
@@ -291,6 +309,9 @@ fun TranscriptionScreen(
             ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
                     Text("Transcript".zh(context, "全文"), modifier = Modifier.padding(12.dp))
+                }
+                Tab(selected = selectedTab == 5, onClick = { selectedTab = 5 }) {
+                    Text("Chat".zh(context, "AI 追问"), modifier = Modifier.padding(12.dp))
                 }
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
                     Text("Summary".zh(context, "摘要"), modifier = Modifier.padding(12.dp))
@@ -352,6 +373,84 @@ fun TranscriptionScreen(
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
+                        5 -> {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Column(
+                                    modifier = Modifier.weight(1f).verticalScroll(chatScroll),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (metadata.chatHistory.isEmpty()) {
+                                        Text(
+                                            "Ask anything about this recording!".zh(context, "针对录音提问，我会为您解答。"),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    metadata.chatHistory.forEach { msg ->
+                                        val isUser = msg.role == "user"
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+                                        ) {
+                                            Surface(
+                                                color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                                shape = MaterialTheme.shapes.medium
+                                            ) {
+                                                Text(msg.content, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                                            }
+                                        }
+                                    }
+                                    if (isAsking) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp).align(Alignment.CenterHorizontally))
+                                    }
+                                }
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    OutlinedTextField(
+                                        value = chatQuery,
+                                        onValueChange = { chatQuery = it },
+                                        modifier = Modifier.weight(1f),
+                                        placeholder = { Text("Ask a question...".zh(context, "提问...")) },
+                                        shape = MaterialTheme.shapes.medium,
+                                        enabled = !isAsking && (metadata.transcript?.isNotEmpty() == true)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    FilledIconButton(
+                                        onClick = {
+                                            val query = chatQuery
+                                            chatQuery = ""
+                                            isAsking = true
+                                            coroutineScope.launch {
+                                                val transcriber = GeminiTranscriber(
+                                                    (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                                                    modelName ?: "gemini-1.5-flash"
+                                                )
+                                                val result = transcriber.askQuestion(
+                                                    metadata.transcript ?: "",
+                                                    query,
+                                                    metadata.chatHistory
+                                                )
+                                                if (result.isSuccess) {
+                                                    val newHistory = metadata.chatHistory + 
+                                                        com.example.recordingandtranscribe.core.ChatMessage("user", query) +
+                                                        com.example.recordingandtranscribe.core.ChatMessage("model", result.getOrNull() ?: "")
+                                                    val newMetadata = metadata.copy(chatHistory = newHistory)
+                                                    metadata = newMetadata
+                                                    MetadataManager.saveMetadata(file, newMetadata)
+                                                }
+                                                isAsking = false
+                                            }
+                                        },
+                                        enabled = chatQuery.isNotBlank() && !isAsking,
+                                        modifier = Modifier.size(52.dp)
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Send", modifier = Modifier.size(24.dp))
+                                    }
+                                }
+                            }
+                        }
                         1 -> {
                             Text(
                                 text = metadata.summary ?: "No summary available.".zh(context, "暂无摘要。"),
@@ -391,7 +490,7 @@ fun TranscriptionScreen(
                                 metadata.emotionAnalysis ?: "No emotion analysis yet.".zh(context, "暂无情感分析。"),
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.verticalScroll(emotionScroll)
-                            )
+                             )
                         }
                         4 -> {
                              Column(modifier = Modifier.verticalScroll(privacyScroll)) {
@@ -418,24 +517,26 @@ fun TranscriptionScreen(
                         else -> {}
                     }
                     
-                    // Copy button floating in the bottom right of the container
-                    FilledIconButton(
-                        onClick = {
-                            val textToCopy = when(selectedTab) {
-                                0 -> metadata.transcript
-                                1 -> metadata.summary
-                                2 -> metadata.actionItems.joinToString("\n")
-                                3 -> metadata.emotionAnalysis
-                                else -> ""
-                            }
-                            if (!textToCopy.isNullOrBlank()) {
-                                clipboardManager.setText(AnnotatedString(textToCopy))
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy".zh(context, "复制"))
+                    if (selectedTab != 5) {
+                        // Copy button floating in the bottom right of the container
+                        FilledIconButton(
+                            onClick = {
+                                val textToCopy = when(selectedTab) {
+                                    0 -> metadata.transcript
+                                    1 -> metadata.summary
+                                    2 -> metadata.actionItems.joinToString("\n")
+                                    3 -> metadata.emotionAnalysis
+                                    else -> ""
+                                }
+                                if (!textToCopy.isNullOrBlank()) {
+                                    clipboardManager.setText(AnnotatedString(textToCopy))
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy".zh(context, "复制"))
+                        }
                     }
                 }
             }

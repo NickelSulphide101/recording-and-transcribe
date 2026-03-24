@@ -109,4 +109,40 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
         val prompt = "Identify and replace any sensitive personal information (like full names, phone numbers, or addresses) in the above transcript with [REDACTED]. Return the full masked transcript."
         return processText(transcript, prompt)
     }
+
+    suspend fun generateSmartTags(transcript: String): Result<List<String>> {
+        val prompt = "Based on the above transcript, generate 3-5 short, one-word tags that categorize this content (e.g., Meeting, Idea, Interview, Personal, Lecture). Return them separated by commas."
+        return processText(transcript, prompt).map { resultText ->
+            resultText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
+    }
+
+    suspend fun askQuestion(transcript: String, question: String, history: List<ChatMessage> = emptyList()): Result<String> = withContext(Dispatchers.IO) {
+        val keysToTry = apiKeys.shuffled()
+        var lastError: Exception? = null
+        
+        for (key in keysToTry) {
+            try {
+                val generativeModel = GenerativeModel(
+                    modelName = modelName,
+                    apiKey = key
+                )
+                val chat = generativeModel.startChat(
+                    history = history.map { 
+                        com.google.ai.client.generativeai.type.content(it.role) { text(it.content) }
+                    }
+                )
+                
+                val fullPrompt = "Context (Transcript of a recording):\n$transcript\n\n---\n\nUser Question: $question"
+                val response = chat.sendMessage(fullPrompt)
+                val output = response.text
+                if (output != null) {
+                    return@withContext Result.success(output)
+                }
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        Result.failure(lastError ?: Exception("All provided API keys failed."))
+    }
 }

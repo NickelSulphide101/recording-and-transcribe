@@ -353,6 +353,27 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                 modifier = Modifier.animateContentSize()
             ) {
                 if (isRecording) {
+                    val liveText by AudioRecorderService.liveTranscript.collectAsState()
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .padding(bottom = 8.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (liveText.isEmpty()) "Listening...".zh(context, "正在倾听...") else liveText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
                     WaveformVisualizer(amplitude = amplitude, isPaused = isPaused)
                     Spacer(modifier = Modifier.height(16.dp))
                     
@@ -540,8 +561,14 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                 }
             } else {
                 val filteredRecordings = recordings.filter { file ->
-                    val matchesSearch = file.name.contains(searchQuery, ignoreCase = true)
                     val metadata = MetadataManager.loadMetadata(file)
+                    val matchesSearch = if (searchQuery.isEmpty()) true else {
+                        file.name.contains(searchQuery, ignoreCase = true) ||
+                        (metadata.transcript?.contains(searchQuery, ignoreCase = true) == true) ||
+                        (metadata.summary?.contains(searchQuery, ignoreCase = true) == true) ||
+                        metadata.keywords.any { it.contains(searchQuery, ignoreCase = true) } ||
+                        metadata.tags.any { it.contains(searchQuery, ignoreCase = true) }
+                    }
                     val matchesFavorite = !filterFavorite || metadata.isFavorite
                     val matchesTag = selectedTag == null || metadata.tags.contains(selectedTag)
                     matchesSearch && matchesFavorite && matchesTag
