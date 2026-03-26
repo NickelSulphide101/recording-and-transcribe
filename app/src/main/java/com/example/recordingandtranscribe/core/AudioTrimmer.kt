@@ -27,7 +27,7 @@ object AudioTrimmer {
             val format = extractor.getTrackFormat(0)
             
             var muxerStarted = false
-            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG)
+            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val trackIndex = muxer.addTrack(format)
             muxer.start()
             muxerStarted = true

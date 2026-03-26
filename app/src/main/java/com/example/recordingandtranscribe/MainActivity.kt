@@ -22,17 +22,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 class MainActivity : FragmentActivity() {
+
+    private lateinit var settingsRepository: SettingsRepository
+    private var isBiometricEnabled = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
-        val settingsRepository = SettingsRepository(this)
-        val isBiometricEnabled = runBlocking { settingsRepository.isBiometricEnabledFlow.first() }
 
-        if (isBiometricEnabled) {
-            showBiometricPrompt()
-        } else {
-            startApp()
+        settingsRepository = SettingsRepository(this)
+
+        // Fetch biometric setting asynchronously and then decide
+        lifecycleScope.launch {
+            isBiometricEnabled = settingsRepository.isBiometricEnabledFlow.first()
+            if (isBiometricEnabled) {
+                showBiometricPrompt()
+            } else {
+                showMainContent()
+            }
         }
     }
 
@@ -42,7 +49,7 @@ class MainActivity : FragmentActivity() {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    startApp()
+                    showMainContent()
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {

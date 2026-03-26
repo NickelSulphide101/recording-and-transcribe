@@ -60,6 +60,7 @@ class AudioRecorderService : Service() {
     private var amplitudeTimer: Timer? = null
     private var silenceStartTime: Long = 0
     private var skipSilenceEnabled = false
+    private var isAutoPaused = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
@@ -70,8 +71,14 @@ class AudioRecorderService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> startRecording()
-            ACTION_PAUSE -> pauseRecording()
-            ACTION_RESUME -> resumeRecording()
+            ACTION_PAUSE -> {
+                isAutoPaused = false
+                pauseRecording()
+            }
+            ACTION_RESUME -> {
+                isAutoPaused = false
+                resumeRecording()
+            }
             ACTION_STOP -> stopRecording()
         }
         return START_NOT_STICKY
@@ -93,26 +100,29 @@ class AudioRecorderService : Service() {
             launch(Dispatchers.Main) {
                 _liveTranscript.value = ""
                 startSpeechRecognition()
+            }
                 
-                recorder = MediaRecorder(this@AudioRecorderService).apply {
-                    setAudioSource(MediaRecorder.AudioSource.MIC)
-                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                    setAudioEncodingBitRate(bitrate)
-                    setAudioSamplingRate(16000)
-                    setOutputFile(outputFile.absolutePath)
+            recorder = MediaRecorder(this@AudioRecorderService).apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioEncodingBitRate(bitrate)
+                setAudioSamplingRate(16000)
+                setOutputFile(outputFile.absolutePath)
 
-                    try {
-                        prepare()
-                        start()
+                try {
+                    prepare()
+                    start()
+                    launch(Dispatchers.Main) {
                         _isRecording.value = true
                         _isPaused.value = false
+                        isAutoPaused = false
                         startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
                         startAmplitudeMonitoring()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        stopSelf()
                     }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    stopSelf()
                 }
             }
         }
@@ -146,21 +156,34 @@ class AudioRecorderService : Service() {
         amplitudeTimer?.cancel()
         amplitudeTimer = Timer()
         amplitudeTimer?.scheduleAtFixedRate(timerTask {
-            if (_isRecording.value && !_isPaused.value) {
+            if (_isRecording.value) {
                 try {
+                    // We can't get amplitude when paused on some Android versions, 
+                    // but on many we still can. If not, this is a best-effort.
                     val amp = recorder?.maxAmplitude?.toFloat() ?: 0f
                     _amplitude.value = amp
 
-                    // Basic Silence Skipping
-                    if (amp < 500f) {
-                        if (silenceStartTime == 0L) silenceStartTime = System.currentTimeMillis()
-                        if (skipSilenceEnabled && System.currentTimeMillis() - silenceStartTime > 3000) {
-                            // Automatically pause if silent for > 3 seconds
-                            pauseRecording()
+                    if (!_isPaused.value) {
+                        // Basic Silence Skipping
+                        if (amp < 500f) {
+                            if (silenceStartTime == 0L) silenceStartTime = System.currentTimeMillis()
+                            if (skipSilenceEnabled && System.currentTimeMillis() - silenceStartTime > 3000) {
+                                // Automatically pause if silent for > 3 seconds
+                                serviceScope.launch(Dispatchers.Main) {
+                                    isAutoPaused = true
+                                    pauseRecording()
+                                }
+                                silenceStartTime = 0
+                            }
+                        } else {
                             silenceStartTime = 0
                         }
-                    } else {
-                        silenceStartTime = 0
+                    } else if (isAutoPaused && amp > 1000f) {
+                        // Auto-resume if sound detected
+                        serviceScope.launch(Dispatchers.Main) {
+                            isAutoPaused = false
+                            resumeRecording()
+                        }
                     }
                 } catch (e: Exception) {}
             }
@@ -175,6 +198,7 @@ class AudioRecorderService : Service() {
     }
 
     private fun stopRecording() {
+        if (!_isRecording.value) return
         try {
             speechRecognizer?.stopListening()
             speechRecognizer?.destroy()

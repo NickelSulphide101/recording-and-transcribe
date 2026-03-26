@@ -111,4 +111,9 @@ class AudioPlayer {
     private fun stopProgressUpdate() {
         progressJob?.cancel()
     }
+
+    fun release() {
+        stop()
+        scope.cancel()
+    }
 }

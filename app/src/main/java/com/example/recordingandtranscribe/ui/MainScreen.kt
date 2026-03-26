@@ -82,11 +82,23 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     var tagToAdd by remember { mutableStateOf("") }
     var newFileName by remember { mutableStateOf("") }
     
+    val metadataCache = remember { mutableStateMapOf<File, com.example.recordingandtranscribe.core.RecordingMetadata>() }
+    
+    LaunchedEffect(recordings) {
+        launch(Dispatchers.IO) {
+            recordings.forEach { file ->
+                if (!metadataCache.containsKey(file)) {
+                    metadataCache[file] = MetadataManager.loadMetadata(file)
+                }
+            }
+        }
+    }
+    
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     DisposableEffect(Unit) {
         onDispose {
-            audioPlayer.stop()
+            audioPlayer.release()
         }
     }
     
@@ -159,6 +171,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                             }
                         }
                         recordings = audioRecorder.getRecordings()
+                        // Ensure cache is updated for the new file
+                        coroutineScope.launch(Dispatchers.IO) {
+                            metadataCache[destFile] = MetadataManager.loadMetadata(destFile)
+                        }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -198,6 +214,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                             oldJsonFile.renameTo(File(currentF.parentFile, "${newFile.nameWithoutExtension}.json"))
                         }
                         recordings = audioRecorder.getRecordings()
+                        // Refresh cache for the new file name
+                        coroutineScope.launch(Dispatchers.IO) {
+                            metadataCache[newFile] = MetadataManager.loadMetadata(newFile)
+                        }
                         if (currentFile == currentF) {
                             audioPlayer.stop()
                         }
@@ -561,7 +581,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                 }
             } else {
                 val filteredRecordings = recordings.filter { file ->
-                    val metadata = MetadataManager.loadMetadata(file)
+                    val metadata = metadataCache[file] ?: com.example.recordingandtranscribe.core.RecordingMetadata()
                     val matchesSearch = if (searchQuery.isEmpty()) true else {
                         file.name.contains(searchQuery, ignoreCase = true) ||
                         (metadata.transcript?.contains(searchQuery, ignoreCase = true) == true) ||
@@ -580,7 +600,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                 ) {
                     items(filteredRecordings) { file ->
                         var expanded by remember { mutableStateOf(false) }
-                        var mData by remember { mutableStateOf(MetadataManager.loadMetadata(file)) }
+                        val mData = metadataCache[file] ?: com.example.recordingandtranscribe.core.RecordingMetadata()
 
                         ElevatedCard(
                             modifier = Modifier
@@ -633,7 +653,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                         IconButton(onClick = {
                                             val newMeta = mData.copy(isFavorite = !mData.isFavorite)
                                             MetadataManager.saveMetadata(file, newMeta)
-                                            mData = newMeta
+                                            metadataCache[file] = newMeta
                                         }) {
                                             Icon(
                                                 if (mData.isFavorite) Icons.Default.Star else Icons.Default.StarOutline,

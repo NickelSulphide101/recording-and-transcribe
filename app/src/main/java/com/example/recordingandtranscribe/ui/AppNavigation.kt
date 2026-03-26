@@ -68,7 +68,9 @@ fun AppNavigation() {
             arguments = listOf(navArgument("fileName") { type = NavType.StringType })
         ) { backStackEntry ->
             val fileName = backStackEntry.arguments?.getString("fileName") ?: return@composable
-            val file = File(context.filesDir, fileName)
+            // Sanitize fileName to prevent path traversal
+            val sanitizedName = File(fileName).name
+            val file = File(context.filesDir, sanitizedName)
             TranscriptionScreen(
                 navController = navController,
                 file = file,

@@ -53,15 +53,25 @@ class SettingsRepository(private val context: Context) {
     val isOnboardingCompletedFlow: Flow<Boolean> = context.dataStore.data
         .map { it[IS_ONBOARDING_COMPLETED] ?: false }
 
-    suspend fun saveSettings(apiKey: String, modelName: String, bitrate: Int? = null, skipSilence: Boolean? = null, isBiometricEnabled: Boolean? = null, isDenoisingEnabled: Boolean? = null, useGeminiNano: Boolean? = null) {
+    // [SECURITY WARNING] API Key and Model Name are stored in plaintext DataStore.
+    // For production apps, use EncryptedSharedPreferences or Android Keystore.
+    suspend fun saveSettings(
+        apiKey: String? = null,
+        modelName: String? = null,
+        bitrate: Int? = null,
+        skipSilence: Boolean? = null,
+        isBiometricEnabled: Boolean? = null,
+        isDenoisingEnabled: Boolean? = null,
+        useGeminiNano: Boolean? = null
+    ) {
         context.dataStore.edit { settings ->
-            settings[GEMINI_API_KEY] = apiKey
-            settings[GEMINI_MODEL_NAME] = modelName
-            if (bitrate != null) settings[BITRATE] = bitrate
-            if (skipSilence != null) settings[SKIP_SILENCE] = skipSilence
-            if (isBiometricEnabled != null) settings[IS_BIOMETRIC_ENABLED] = isBiometricEnabled
-            if (isDenoisingEnabled != null) settings[IS_DENOISING_ENABLED] = isDenoisingEnabled
-            if (useGeminiNano != null) settings[USE_GEMINI_NANO] = useGeminiNano
+            apiKey?.let { settings[GEMINI_API_KEY] = it }
+            modelName?.let { settings[GEMINI_MODEL_NAME] = it }
+            bitrate?.let { settings[BITRATE] = it }
+            skipSilence?.let { settings[SKIP_SILENCE] = it }
+            isBiometricEnabled?.let { settings[IS_BIOMETRIC_ENABLED] = it }
+            isDenoisingEnabled?.let { settings[IS_DENOISING_ENABLED] = it }
+            useGeminiNano?.let { settings[USE_GEMINI_NANO] = it }
         }
     }
 
