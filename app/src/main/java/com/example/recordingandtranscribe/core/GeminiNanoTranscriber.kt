@@ -157,10 +157,7 @@ class GeminiNanoTranscriber(private val context: Context) {
                     
                     if (recognitionError != null) {
                         lastError = recognitionError?.message
-                        return@continue_loop // Need to use label to continue loop from within use block
-                    }
-
-                    if (finalTranscript.isNotEmpty()) {
+                    } else if (finalTranscript.isNotEmpty()) {
                         Log.d("GeminiNano", "Transcription successful using $mode mode.")
                         recognizer.close()
                         return@withContext Result.success(finalTranscript)

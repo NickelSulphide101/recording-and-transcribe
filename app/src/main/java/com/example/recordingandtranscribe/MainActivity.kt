@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
 import com.example.recordingandtranscribe.core.SettingsRepository
 import com.example.recordingandtranscribe.core.zh
 import com.example.recordingandtranscribe.ui.AppNavigation
@@ -38,7 +39,7 @@ class MainActivity : FragmentActivity() {
             if (isBiometricEnabled) {
                 showBiometricPrompt()
             } else {
-                showMainContent()
+                startApp()
             }
         }
     }
@@ -49,7 +50,7 @@ class MainActivity : FragmentActivity() {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    showMainContent()
+                    startApp()
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
