@@ -243,11 +243,11 @@ fun TranscriptionScreen(
                                 } else {
                                     transcriber?.generateSummary(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 }
-                                val actionItemsResult = transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val keywordsResult = transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val emotionResult = transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val privacyResult = transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val tagsResult = transcriber?.generateSmartTags(currentTranscript) ?: Result.success(emptyList())
+                                val actionItemsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val keywordsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val emotionResult = if (useGeminiNano) Result.success(null) else transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val privacyResult = if (useGeminiNano) Result.success(currentTranscript) else transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val tagsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateSmartTags(currentTranscript) ?: Result.success(emptyList())
 
                                 val newTranscript = if (privacyResult.isSuccess) {
                                     privacyResult.getOrNull() ?: currentTranscript
@@ -406,6 +406,14 @@ fun TranscriptionScreen(
                                 
                                 Spacer(modifier = Modifier.height(8.dp))
                                 
+                                if (useGeminiNano && apiKey.isNullOrBlank()) {
+                                    Text(
+                                        "Chat function requires Cloud Gemini API Key. (AI 追问功能需要云端 API 密钥)",
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     OutlinedTextField(
                                         value = chatQuery,
@@ -413,7 +421,7 @@ fun TranscriptionScreen(
                                         modifier = Modifier.weight(1f),
                                         placeholder = { Text("Ask a question...".zh(context, "提问...")) },
                                         shape = MaterialTheme.shapes.medium,
-                                        enabled = !isAsking && (metadata.transcript?.isNotEmpty() == true)
+                                        enabled = !isAsking && (metadata.transcript?.isNotEmpty() == true) && (!useGeminiNano || !apiKey.isNullOrBlank())
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     FilledIconButton(

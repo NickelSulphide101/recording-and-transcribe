@@ -105,67 +105,76 @@ class GeminiNanoTranscriber(private val context: Context) {
                     this.preferredMode = mode
                 }
                 val recognizer = SpeechRecognition.getClient(options)
-                val status = recognizer.checkStatus()
-                
-                if (status == FeatureStatus.UNAVAILABLE) {
-                    Log.d("GeminiNano", "Mode $mode with $locale is unavailable. Trying next config...")
-                    continue
-                }
-
-                if (status != FeatureStatus.AVAILABLE) {
-                    Log.d("GeminiNano", "Model download needed for $mode. Starting...")
-                    val terminalStatus = recognizer.download().first {
-                        it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
-                    }
-
-                    if (terminalStatus is DownloadStatus.DownloadFailed) {
-                        lastError = "Download failed: ${terminalStatus.e.message}"
-                        Log.w("GeminiNano", "Download failed for $mode: $lastError")
+                try {
+                    val status = recognizer.checkStatus()
+                    
+                    if (status == FeatureStatus.UNAVAILABLE) {
+                        Log.d("GeminiNano", "Mode $mode with $locale is unavailable. Trying next config...")
                         continue
                     }
-                }
 
-                // If we reach here, model is available or downloaded successfully
-                ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                    val request = speechRecognizerRequest {
-                        audioSource = AudioSource.fromPfd(pfd)
+                    if (status != FeatureStatus.AVAILABLE) {
+                        Log.d("GeminiNano", "Model download needed for $mode. Starting...")
+                        val terminalStatus = recognizer.download().first {
+                            it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
+                        }
+
+                        if (terminalStatus is DownloadStatus.DownloadFailed) {
+                            lastError = "Download failed: ${terminalStatus.e.message}"
+                            Log.w("GeminiNano", "Download failed for $mode: $lastError")
+                            continue
+                        }
                     }
-                    
-                    var finalTranscript = ""
-                    var recognitionError: Exception? = null
-                    
-                    recognizer.startRecognition(request)
-                        .takeWhile { response ->
-                            when (response) {
-                                is SpeechRecognizerResponse.ErrorResponse -> {
-                                    recognitionError = response.e
-                                    false
+
+                    // If we reach here, model is available or downloaded successfully
+                    ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                        val request = speechRecognizerRequest {
+                            audioSource = AudioSource.fromPfd(pfd)
+                        }
+                        
+                        var finalTranscript = ""
+                        var accumulatedText = ""
+                        var currentPartial = ""
+                        var recognitionError: Exception? = null
+                        
+                        recognizer.startRecognition(request)
+                            .takeWhile { response ->
+                                when (response) {
+                                    is SpeechRecognizerResponse.ErrorResponse -> {
+                                        recognitionError = response.e
+                                        false
+                                    }
+                                    is SpeechRecognizerResponse.CompletedResponse -> false
+                                    else -> true
                                 }
-                                is SpeechRecognizerResponse.CompletedResponse -> false
-                                else -> true
                             }
-                        }
-                        .collect { response ->
-                            when (response) {
-                                is SpeechRecognizerResponse.FinalTextResponse -> finalTranscript = response.text
-                                is SpeechRecognizerResponse.PartialTextResponse -> finalTranscript = response.text
-                                else -> {}
+                            .collect { response ->
+                                when (response) {
+                                    is SpeechRecognizerResponse.FinalTextResponse -> {
+                                        accumulatedText += response.text + " "
+                                        currentPartial = ""
+                                        finalTranscript = accumulatedText
+                                    }
+                                    is SpeechRecognizerResponse.PartialTextResponse -> {
+                                        currentPartial = response.text
+                                        finalTranscript = accumulatedText + currentPartial
+                                    }
+                                    else -> {}
+                                }
                             }
+                        
+                        recognizer.stopRecognition()
+                        
+                        if (recognitionError != null) {
+                            lastError = recognitionError?.message
+                        } else {
+                            Log.d("GeminiNano", "Transcription successful using $mode mode.")
+                            return@withContext Result.success(finalTranscript.trim())
                         }
-                    
-                    recognizer.stopRecognition()
-                    
-                    if (recognitionError != null) {
-                        lastError = recognitionError?.message
-                    } else if (finalTranscript.isNotEmpty()) {
-                        Log.d("GeminiNano", "Transcription successful using $mode mode.")
-                        recognizer.close()
-                        return@withContext Result.success(finalTranscript)
-                    } else {
-                        lastError = "Empty result"
                     }
+                } finally {
+                    recognizer.close()
                 }
-                recognizer.close()
 
             } catch (e: Exception) {
                 lastError = e.message
