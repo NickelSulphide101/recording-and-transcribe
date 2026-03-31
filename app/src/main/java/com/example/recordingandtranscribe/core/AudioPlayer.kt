@@ -34,11 +34,13 @@ class AudioPlayer {
                     stopProgressUpdate()
                     onCompletion()
                 }
-                prepare()
-                _duration.value = duration
-                start()
-                _isPlaying.value = true
-                startProgressUpdate()
+                setOnPreparedListener { mp ->
+                    _duration.value = mp.duration
+                    mp.start()
+                    _isPlaying.value = true
+                    startProgressUpdate()
+                }
+                prepareAsync()
             }
         } catch (e: Exception) {
             e.printStackTrace()

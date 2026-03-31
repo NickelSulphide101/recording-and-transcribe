@@ -149,7 +149,16 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     val pickImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri ->
-            uri?.let { capturedPhotoUris = capturedPhotoUris + it.toString() }
+            uri?.let { sourceUri ->
+                coroutineScope.launch(Dispatchers.IO) {
+                    val destFile = File(context.cacheDir, "imported_img_${System.currentTimeMillis()}.jpg")
+                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        destFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    val localUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", destFile).toString()
+                    capturedPhotoUris = capturedPhotoUris + localUri
+                }
+            }
         }
     )
 
@@ -204,6 +213,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     val extension = if (currentF.name.endsWith(".m4a")) ".m4a" else ".ogg"
                     val finalName = if (newFileName.endsWith(extension)) newFileName else "$newFileName$extension"
                     val newFile = File(currentF.parentFile, finalName)
+                    if (newFile.exists()) {
+                        android.widget.Toast.makeText(context, "文件名已存在", android.widget.Toast.LENGTH_SHORT).show()
+                        return@FilledTonalButton
+                    }
                     if (currentF.renameTo(newFile)) {
                         val oldTxtFile = File(currentF.parentFile, "${currentF.nameWithoutExtension}.txt")
                         if (oldTxtFile.exists()) {
@@ -265,12 +278,14 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     val endUs = (trimEnd.toLongOrNull() ?: 10L) * 1_000_000L
                     val inputFile = fileToTrim!!
                     val outputFile = File(inputFile.parentFile, "TRIM_${inputFile.name}")
-                    coroutineScope.launch {
+                    coroutineScope.launch(Dispatchers.IO) {
                         val success = AudioTrimmer.trimAudio(inputFile, outputFile, startUs, endUs)
-                        if (success) {
-                            recordings = audioRecorder.getRecordings()
+                        launch(Dispatchers.Main) {
+                            if (success) {
+                                recordings = audioRecorder.getRecordings()
+                            }
+                            fileToTrim = null
                         }
-                        fileToTrim = null
                     }
                 }) {
                     Text("Trim".zh(context, "裁剪"))
@@ -606,7 +621,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 6.dp),
-                            onClick = { navController.navigate("transcribe/${file.name}") },
+                            onClick = { navController.navigate("transcribe/${android.net.Uri.encode(file.name)}") },
                             shape = MaterialTheme.shapes.large,
                             elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
                         ) {

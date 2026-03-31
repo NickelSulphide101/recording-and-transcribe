@@ -34,9 +34,10 @@ object FileExporter {
 
     fun exportToPdf(context: Context, file: File, metadata: RecordingMetadata): File? {
         val pdfDocument = PdfDocument()
-        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 size
-        val page = pdfDocument.startPage(pageInfo)
-        val canvas = page.canvas
+        var pageNum = 1
+        var pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create() // A4 size
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
         val paint = Paint().apply {
             textSize = 12f
             color = Color.BLACK
@@ -50,7 +51,14 @@ object FileExporter {
         transcriptLines.forEach { line ->
             // Simple line wrap check (Max 80 chars approx)
             line.chunked(80).forEach { chunk ->
-                if (y > 780f) return@forEach // Simple page break skip (just one page for demo)
+                if (y > 780f) {
+                    pdfDocument.finishPage(page)
+                    pageNum++
+                    pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
+                    page = pdfDocument.startPage(pageInfo)
+                    canvas = page.canvas
+                    y = 50f
+                }
                 canvas.drawText(chunk, 50f, y, paint)
                 y += 20f
             }

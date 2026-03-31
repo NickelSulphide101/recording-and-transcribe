@@ -27,7 +27,16 @@ object AudioTrimmer {
             val format = extractor.getTrackFormat(0)
             
             var muxerStarted = false
-            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val outputFormat = if (outputFile.name.endsWith(".ogg", ignoreCase = true)) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG
+                } else {
+                    MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+                }
+            } else {
+                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            }
+            muxer = MediaMuxer(outputFile.absolutePath, outputFormat)
             val trackIndex = muxer.addTrack(format)
             muxer.start()
             muxerStarted = true
