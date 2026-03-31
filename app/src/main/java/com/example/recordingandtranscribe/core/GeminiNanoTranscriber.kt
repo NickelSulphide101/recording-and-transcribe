@@ -45,14 +45,14 @@ class GeminiNanoTranscriber(private val context: Context) {
     suspend fun generateOnDeviceSummary(text: String): Result<String> = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext Result.failure(Exception("Input text is empty"))
         
+        val summarizer = Summarization.getClient(getSummarizerOptions())
         return@withContext try {
-            val summarizer = Summarization.getClient(getSummarizerOptions())
-            
             // Check summarization feature status
             val status = summarizer.checkFeatureStatus().await()
             if (status != FeatureStatus.AVAILABLE) {
                 Log.d("GeminiNano", "Summarization model not available (status: $status). Starting download...")
-                summarizer.downloadFeature(object : DownloadCallback {
+                val conditions = DownloadConditions.Builder().requireWifi().build()
+                summarizer.downloadFeature(conditions, object : DownloadCallback {
                     override fun onDownloadStarted(bytesToDownload: Long) {}
                     override fun onDownloadProgress(totalBytesDownloaded: Long) {}
                     override fun onDownloadCompleted() {}
@@ -71,6 +71,8 @@ class GeminiNanoTranscriber(private val context: Context) {
         } catch (e: Exception) {
             Log.e("GeminiNano", "On-device summarization error: ${e.message}")
             Result.failure(Exception("Summarization error: ${e.message}"))
+        } finally {
+            summarizer.close()
         }
     }
     
@@ -79,6 +81,9 @@ class GeminiNanoTranscriber(private val context: Context) {
      * Implements a fallback mechanism: Advanced (Gemini Nano) -> Basic (Traditional On-Device).
      */
     suspend fun transcribeOnDevice(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
+        if (!audioFile.exists() || !audioFile.canRead()) {
+            return@withContext Result.failure(Exception("Audio file is missing or unreadable."))
+        }
         val configsToTry = listOf(
             // 1. Try Advanced mode with system locale
             SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.getDefault(),
@@ -115,7 +120,8 @@ class GeminiNanoTranscriber(private val context: Context) {
 
                     if (status != FeatureStatus.AVAILABLE) {
                         Log.d("GeminiNano", "Model download needed for $mode. Starting...")
-                        val terminalStatus = recognizer.download().first {
+                        val conditions = DownloadConditions.Builder().requireWifi().build()
+                        val terminalStatus = recognizer.download(conditions).first {
                             it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
                         }
 

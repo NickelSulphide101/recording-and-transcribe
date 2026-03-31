@@ -57,6 +57,7 @@ fun TranscriptionScreen(
     val useGeminiNano by settingsRepository.useGeminiNanoFlow.collectAsState(initial = false)
     
     var isProcessing by remember { mutableStateOf(false) }
+    var downloadProgressMsg by remember { mutableStateOf<String?>(null) }
     var isAsking by remember { mutableStateOf(false) }
     var chatQuery by remember { mutableStateOf("") }
     var metadata by remember { mutableStateOf(MetadataManager.loadMetadata(file)) }
@@ -164,6 +165,7 @@ fun TranscriptionScreen(
                         }
                         isProcessing = true
                         errorMessage = null
+                        downloadProgressMsg = if (useGeminiNano) "Downloading AI model on first use...".zh(context, "首次使用本地 AI 需下载模型，请耐心等待...") else null
                         coroutineScope.launch {
                             try {
                                 val transcriber = if (apiKeysList.isNotEmpty()) {
@@ -197,6 +199,8 @@ fun TranscriptionScreen(
                 ) {
                     if (isProcessing) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(downloadProgressMsg ?: "Processing...".zh(context, "处理中..."))
                     } else {
                         Icon(Icons.Default.Mic, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -214,6 +218,7 @@ fun TranscriptionScreen(
                         }
                         isProcessing = true
                         errorMessage = null
+                        downloadProgressMsg = if (useGeminiNano) "Downloading AI model on first use...".zh(context, "首次使用本地 AI 需下载模型，请耐心等待...") else null
                         coroutineScope.launch {
                             try {
                                 val transcriber = if (apiKeysList.isNotEmpty()) {
@@ -280,6 +285,8 @@ fun TranscriptionScreen(
                 ) {
                     if (isProcessing) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(downloadProgressMsg ?: "Processing...".zh(context, "处理中..."))
                     } else {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
