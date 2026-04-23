@@ -143,33 +143,30 @@ class GeminiNanoTranscriber(private val context: Context) {
                         var currentPartial = ""
                         var recognitionError: Exception? = null
                         
-                        recognizer.startRecognition(request)
-                            .takeWhile { response ->
-                                when (response) {
-                                    is SpeechRecognizerResponse.ErrorResponse -> {
-                                        recognitionError = response.e
-                                        false
+                        try {
+                            recognizer.startRecognition(request)
+                                .collect { response ->
+                                    when (response) {
+                                        is SpeechRecognizerResponse.FinalTextResponse -> {
+                                            accumulatedText += response.text + " "
+                                            currentPartial = ""
+                                            finalTranscript = accumulatedText
+                                        }
+                                        is SpeechRecognizerResponse.PartialTextResponse -> {
+                                            currentPartial = response.text
+                                            finalTranscript = accumulatedText + currentPartial
+                                        }
+                                        is SpeechRecognizerResponse.ErrorResponse -> {
+                                            recognitionError = response.e
+                                        }
+                                        is SpeechRecognizerResponse.CompletedResponse -> {
+                                            // Flow completes naturally
+                                        }
                                     }
-                                    is SpeechRecognizerResponse.CompletedResponse -> false
-                                    else -> true
                                 }
-                            }
-                            .collect { response ->
-                                when (response) {
-                                    is SpeechRecognizerResponse.FinalTextResponse -> {
-                                        accumulatedText += response.text + " "
-                                        currentPartial = ""
-                                        finalTranscript = accumulatedText
-                                    }
-                                    is SpeechRecognizerResponse.PartialTextResponse -> {
-                                        currentPartial = response.text
-                                        finalTranscript = accumulatedText + currentPartial
-                                    }
-                                    else -> {}
-                                }
-                            }
-                        
-                        recognizer.stopRecognition()
+                        } finally {
+                            recognizer.stopRecognition()
+                        }
                         
                         if (recognitionError != null) {
                             lastError = recognitionError?.message

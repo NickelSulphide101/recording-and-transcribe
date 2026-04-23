@@ -34,9 +34,15 @@ class RecordingWidgetProvider : AppWidgetProvider() {
         val intent = Intent(context, AudioRecorderService::class.java).apply {
             action = if (isRecording) AudioRecorderService.ACTION_STOP else AudioRecorderService.ACTION_START
         }
-        val pendingIntent = PendingIntent.getService(
-            context, appWidgetId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent = if (!isRecording && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            PendingIntent.getForegroundService(
+                context, appWidgetId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else {
+            PendingIntent.getService(
+                context, appWidgetId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
 
         views.setOnClickPendingIntent(R.id.widget_icon, pendingIntent)
         views.setOnClickPendingIntent(R.id.widget_text, pendingIntent)

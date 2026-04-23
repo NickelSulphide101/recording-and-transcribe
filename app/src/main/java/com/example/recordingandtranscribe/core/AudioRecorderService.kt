@@ -93,7 +93,7 @@ class AudioRecorderService : Service() {
             val bitrate = settings.bitrateFlow.first()
             skipSilenceEnabled = settings.skipSilenceFlow.first()
             
-            val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.m4a"
+            val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.ogg"
             val outputFile = File(filesDir, fileName)
             currentFile = outputFile
 
@@ -104,8 +104,8 @@ class AudioRecorderService : Service() {
                 
             recorder = MediaRecorder(this@AudioRecorderService).apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setOutputFormat(MediaRecorder.OutputFormat.OGG)
+                setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
                 setAudioEncodingBitRate(bitrate)
                 setAudioSamplingRate(16000)
                 setOutputFile(outputFile.absolutePath)
@@ -219,6 +219,8 @@ class AudioRecorderService : Service() {
         }
     }
 
+    private var finalizedTranscript = ""
+
     private fun startSpeechRecognition() {
         if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) return
         
@@ -231,19 +233,25 @@ class AudioRecorderService : Service() {
                 override fun onEndOfSpeech() {}
                 override fun onError(error: Int) {
                     if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                        // Restart if it times out
+                        // Restart if it times out, but with a delay to optimize performance during prolonged silence
                         if (_isRecording.value && !_isPaused.value) {
-                            startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                            })
+                            serviceScope.launch {
+                                kotlinx.coroutines.delay(1000)
+                                if (_isRecording.value && !_isPaused.value) {
+                                    startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                        putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                                    })
+                                }
+                            }
                         }
                     }
                 }
                 override fun onResults(results: android.os.Bundle?) {
                     val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
-                        _liveTranscript.value = matches[0]
+                        finalizedTranscript += (if (finalizedTranscript.isEmpty()) "" else " ") + matches[0]
+                        _liveTranscript.value = finalizedTranscript
                     }
                     // Restart listening for continuous flow
                     if (_isRecording.value && !_isPaused.value) {
@@ -256,7 +264,7 @@ class AudioRecorderService : Service() {
                 override fun onPartialResults(partialResults: android.os.Bundle?) {
                     val matches = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
-                        _liveTranscript.value = matches[0]
+                        _liveTranscript.value = finalizedTranscript + (if (finalizedTranscript.isEmpty()) "" else " ") + matches[0]
                     }
                 }
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) {}

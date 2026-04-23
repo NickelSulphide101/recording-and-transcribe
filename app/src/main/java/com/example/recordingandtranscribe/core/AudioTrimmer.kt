@@ -48,7 +48,7 @@ object AudioTrimmer {
             extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
             var sampleCount = 0
-            val maxSamples = 100000 // Safety limit to avoid infinite loops
+            val maxSamples = 10_000_000 // Increased safety limit to avoid cutting off long recordings (>30 mins)
             while (sampleCount < maxSamples) {
                 bufferInfo.offset = 0
                 bufferInfo.size = extractor.readSampleData(buffer, 0)

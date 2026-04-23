@@ -413,7 +413,13 @@ fun TranscriptionScreen(
                                 
                                 Spacer(modifier = Modifier.height(8.dp))
                                 
-                                if (useGeminiNano && apiKey.isNullOrBlank()) {
+                                if (useGeminiNano) {
+                                    Text(
+                                        "Chat is disabled in Local AI mode to protect your privacy.".zh(context, "为保护隐私，本地 AI 模式下已禁用云端追问。"),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                } else if (apiKey.isNullOrBlank()) {
                                     Text(
                                         "Chat function requires Cloud Gemini API Key. (AI 追问功能需要云端 API 密钥)",
                                         color = MaterialTheme.colorScheme.error,
@@ -428,7 +434,7 @@ fun TranscriptionScreen(
                                         modifier = Modifier.weight(1f),
                                         placeholder = { Text("Ask a question...".zh(context, "提问...")) },
                                         shape = MaterialTheme.shapes.medium,
-                                        enabled = !isAsking && (metadata.transcript?.isNotEmpty() == true) && (!useGeminiNano || !apiKey.isNullOrBlank())
+                                        enabled = !isAsking && (metadata.transcript?.isNotEmpty() == true) && !useGeminiNano && !apiKey.isNullOrBlank()
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     FilledIconButton(
@@ -453,11 +459,14 @@ fun TranscriptionScreen(
                                                     val newMetadata = metadata.copy(chatHistory = newHistory)
                                                     metadata = newMetadata
                                                     MetadataManager.saveMetadata(file, newMetadata)
+                                                } else {
+                                                    chatQuery = query // Restore query on failure
+                                                    android.widget.Toast.makeText(context, "Chat failed: ${result.exceptionOrNull()?.message}".zh(context, "追问失败"), android.widget.Toast.LENGTH_SHORT).show()
                                                 }
                                                 isAsking = false
                                             }
                                         },
-                                        enabled = chatQuery.isNotBlank() && !isAsking,
+                                        enabled = chatQuery.isNotBlank() && !isAsking && !useGeminiNano && !apiKey.isNullOrBlank(),
                                         modifier = Modifier.size(52.dp)
                                     ) {
                                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Send", modifier = Modifier.size(24.dp))

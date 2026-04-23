@@ -47,10 +47,21 @@ object FileExporter {
         canvas.drawText("Transcript: ${file.name}", 50f, y, paint)
         y += 30f
 
-        val transcriptLines = metadata.transcript?.lines() ?: listOf("No transcript")
-        transcriptLines.forEach { line ->
-            // Simple line wrap check (Max 80 chars approx)
-            line.chunked(80).forEach { chunk ->
+        fun drawTextWrapped(text: String, isBold: Boolean = false) {
+            paint.isFakeBoldText = isBold
+            var remainingText = text
+            val maxWidth = 495f // 595 width - 50 margin * 2
+            
+            if (remainingText.isEmpty()) {
+                y += 20f
+                return
+            }
+            
+            while (remainingText.isNotEmpty()) {
+                val count = paint.breakText(remainingText, true, maxWidth, null)
+                val chunk = remainingText.substring(0, count)
+                remainingText = remainingText.substring(count)
+                
                 if (y > 780f) {
                     pdfDocument.finishPage(page)
                     pageNum++
@@ -62,6 +73,24 @@ object FileExporter {
                 canvas.drawText(chunk, 50f, y, paint)
                 y += 20f
             }
+            paint.isFakeBoldText = false
+        }
+
+        val transcriptLines = metadata.transcript?.lines() ?: listOf("No transcript")
+        transcriptLines.forEach { drawTextWrapped(it) }
+
+        if (metadata.summary != null) {
+            y += 20f
+            drawTextWrapped("Summary", isBold = true)
+            drawTextWrapped("----------")
+            metadata.summary.lines().forEach { drawTextWrapped(it) }
+        }
+
+        if (metadata.actionItems.isNotEmpty()) {
+            y += 20f
+            drawTextWrapped("Action Items", isBold = true)
+            drawTextWrapped("----------")
+            metadata.actionItems.forEach { drawTextWrapped("- $it") }
         }
 
         pdfDocument.finishPage(page)
@@ -82,7 +111,10 @@ object FileExporter {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        context.startActivity(Intent.createChooser(intent, "Share via"))
+        val chooser = Intent.createChooser(intent, "Share via").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
     }
 }
 

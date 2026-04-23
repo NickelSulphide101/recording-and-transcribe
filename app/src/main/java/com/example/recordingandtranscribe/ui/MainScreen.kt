@@ -63,6 +63,8 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
     val duration by audioPlayer.duration.collectAsState()
     val currentFile by audioPlayer.currentFile.collectAsState()
     
+    var sliderPosition by remember { mutableStateOf<Float?>(null) }
+    
     val isRecording by AudioRecorderService.isRecording.collectAsState()
     val isPaused by AudioRecorderService.isPaused.collectAsState()
     val amplitude by AudioRecorderService.amplitude.collectAsState()
@@ -108,7 +110,9 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
             val lastFile = AudioRecorderService.currentFile
             if (lastFile != null && capturedPhotoUris.isNotEmpty()) {
                 val metadata = MetadataManager.loadMetadata(lastFile)
-                MetadataManager.saveMetadata(lastFile, metadata.copy(photoUris = capturedPhotoUris))
+                val newMeta = metadata.copy(photoUris = capturedPhotoUris)
+                MetadataManager.saveMetadata(lastFile, newMeta)
+                metadataCache[lastFile] = newMeta
             }
             capturedPhotoUris = emptyList() // Reset for next session
             recordings = audioRecorder.getRecordings()
@@ -229,7 +233,11 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         recordings = audioRecorder.getRecordings()
                         // Refresh cache for the new file name
                         coroutineScope.launch(Dispatchers.IO) {
-                            metadataCache[newFile] = MetadataManager.loadMetadata(newFile)
+                            val newMeta = MetadataManager.loadMetadata(newFile)
+                            launch(Dispatchers.Main) {
+                                metadataCache.remove(currentF)
+                                metadataCache[newFile] = newMeta
+                            }
                         }
                         if (currentFile == currentF) {
                             audioPlayer.stop()
@@ -280,8 +288,13 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     val outputFile = File(inputFile.parentFile, "TRIM_${inputFile.name}")
                     coroutineScope.launch(Dispatchers.IO) {
                         val success = AudioTrimmer.trimAudio(inputFile, outputFile, startUs, endUs)
+                        if (success) {
+                            val originalMeta = MetadataManager.loadMetadata(inputFile)
+                            MetadataManager.saveMetadata(outputFile, originalMeta)
+                        }
                         launch(Dispatchers.Main) {
                             if (success) {
+                                metadataCache[outputFile] = MetadataManager.loadMetadata(outputFile)
                                 recordings = audioRecorder.getRecordings()
                             }
                             fileToTrim = null
@@ -498,10 +511,16 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(formatTime(progress), style = MaterialTheme.typography.labelMedium)
                             Slider(
-                                value = if (duration > 0) progress.toFloat() / duration else 0f,
+                                value = sliderPosition ?: (if (duration > 0) progress.toFloat() / duration else 0f),
                                 onValueChange = { percent ->
-                                    val newPos = (percent * duration).toInt()
-                                    audioPlayer.seekTo(newPos)
+                                    sliderPosition = percent
+                                },
+                                onValueChangeFinished = {
+                                    sliderPosition?.let { percent ->
+                                        val newPos = (percent * duration).toInt()
+                                        audioPlayer.seekTo(newPos)
+                                        sliderPosition = null
+                                    }
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -758,7 +777,15 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                         if (txtFile.exists()) txtFile.delete()
                                                         val jsonFile = File(file.parentFile, "${file.nameWithoutExtension}.json")
                                                         if (jsonFile.exists()) jsonFile.delete()
+                                                        
+                                                        // Clean up exported files in cache to prevent PII leaks
+                                                        val txtCacheFile = File(context.cacheDir, "${file.nameWithoutExtension}.txt")
+                                                        if (txtCacheFile.exists()) txtCacheFile.delete()
+                                                        val pdfCacheFile = File(context.cacheDir, "${file.nameWithoutExtension}.pdf")
+                                                        if (pdfCacheFile.exists()) pdfCacheFile.delete()
+                                                        
                                                         file.delete()
+                                                        metadataCache.remove(file)
                                                         recordings = audioRecorder.getRecordings()
                                                     }
                                                 )
@@ -789,7 +816,9 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                 selected = false,
                                 onClick = { 
                                     val newTags = currentMeta.tags.filter { it != tag }
-                                    MetadataManager.saveMetadata(fileToTag!!, currentMeta.copy(tags = newTags))
+                                    val newMeta = currentMeta.copy(tags = newTags)
+                                    MetadataManager.saveMetadata(fileToTag!!, newMeta)
+                                    metadataCache[fileToTag!!] = newMeta
                                     recordings = audioRecorder.getRecordings() // Force refresh
                                 },
                                 label = { Text(tag) },
@@ -814,7 +843,9 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         val currentMeta = MetadataManager.loadMetadata(fileToTag!!)
                         if (!currentMeta.tags.contains(tagToAdd)) {
                             val newTags = currentMeta.tags + tagToAdd
-                            MetadataManager.saveMetadata(fileToTag!!, currentMeta.copy(tags = newTags))
+                            val newMeta = currentMeta.copy(tags = newTags)
+                            MetadataManager.saveMetadata(fileToTag!!, newMeta)
+                            metadataCache[fileToTag!!] = newMeta
                             recordings = audioRecorder.getRecordings()
                         }
                     }
