@@ -51,8 +51,7 @@ class GeminiNanoTranscriber(context: Context) {
             val status = summarizer.checkFeatureStatus().await()
             if (status != FeatureStatus.AVAILABLE) {
                 Log.d("GeminiNano", "Summarization model not available (status: $status). Starting download...")
-                val conditions = DownloadConditions.Builder().requireWifi().build()
-                summarizer.downloadFeature(conditions, object : DownloadCallback {
+                summarizer.downloadFeature(object : DownloadCallback {
                     override fun onDownloadStarted(bytesToDownload: Long) {}
                     override fun onDownloadProgress(totalBytesDownloaded: Long) {}
                     override fun onDownloadCompleted() {}
@@ -120,8 +119,7 @@ class GeminiNanoTranscriber(context: Context) {
 
                     if (status != FeatureStatus.AVAILABLE) {
                         Log.d("GeminiNano", "Model download needed for $mode. Starting...")
-                        val conditions = DownloadConditions.Builder().requireWifi().build()
-                        val terminalStatus = recognizer.download(conditions).first {
+                        val terminalStatus = recognizer.download().first {
                             it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
                         }
 
