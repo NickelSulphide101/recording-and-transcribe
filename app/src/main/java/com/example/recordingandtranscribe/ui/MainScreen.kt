@@ -108,11 +108,22 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         if (!isRecording) {
             // Save captured photos to metadata of the just-finished recording
             val lastFile = AudioRecorderService.currentFile
-            if (lastFile != null && capturedPhotoUris.isNotEmpty()) {
-                val metadata = MetadataManager.loadMetadata(lastFile)
-                val newMeta = metadata.copy(photoUris = capturedPhotoUris)
-                MetadataManager.saveMetadata(lastFile, newMeta)
-                metadataCache[lastFile] = newMeta
+            if (lastFile != null) {
+                var metadata = MetadataManager.loadMetadata(lastFile)
+                val currentLiveText = AudioRecorderService.liveTranscript.value
+                var changed = false
+                if (capturedPhotoUris.isNotEmpty()) {
+                    metadata = metadata.copy(photoUris = capturedPhotoUris)
+                    changed = true
+                }
+                if (currentLiveText.isNotBlank()) {
+                    metadata = metadata.copy(transcript = currentLiveText)
+                    changed = true
+                }
+                if (changed) {
+                    MetadataManager.saveMetadata(lastFile, metadata)
+                    metadataCache[lastFile] = metadata
+                }
             }
             capturedPhotoUris = emptyList() // Reset for next session
             recordings = audioRecorder.getRecordings()
@@ -767,7 +778,7 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                             try {
                                                                 val uri = android.net.Uri.parse(uriStr)
                                                                 val fileName = uri.lastPathSegment ?: ""
-                                                                if (fileName.startsWith("photo_") && fileName.endsWith(".jpg")) {
+                                                                if ((fileName.startsWith("photo_") || fileName.startsWith("imported_img_")) && fileName.endsWith(".jpg")) {
                                                                     val photoFile = File(context.cacheDir, fileName)
                                                                     if (photoFile.exists()) photoFile.delete()
                                                                 }

@@ -64,6 +64,8 @@ fun TranscriptionScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) }
     
+    val apiKeysList = remember(apiKey) { (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() } }
+    
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val clipboardManager = LocalClipboardManager.current
     
@@ -158,7 +160,6 @@ fun TranscriptionScreen(
                 // Button 1: Speech to Text
                 Button(
                     onClick = {
-                        val apiKeysList = (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
                         if (!useGeminiNano && apiKeysList.isEmpty()) {
                             errorMessage = "Please set Gemini API Key in Settings.".zh(context, "请先在设置中配置 Gemini API 密钥。")
                             return@Button
@@ -211,7 +212,6 @@ fun TranscriptionScreen(
                 // Button 2: AI Analysis
                 Button(
                     onClick = {
-                        val apiKeysList = (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
                         if (!useGeminiNano && apiKeysList.isEmpty()) {
                             errorMessage = "Please set Gemini API Key in Settings.".zh(context, "请先在设置中配置 Gemini API 密钥。")
                             return@Button
@@ -251,7 +251,7 @@ fun TranscriptionScreen(
                                 val actionItemsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 val keywordsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 val emotionResult = if (useGeminiNano) Result.success(null) else transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val privacyResult = if (useGeminiNano) Result.success(currentTranscript) else transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val privacyResult = if (useGeminiNano) Result.failure<String>(Exception("Not supported locally")) else transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 val tagsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateSmartTags(currentTranscript) ?: Result.success(emptyList())
 
                                 val newTranscript = if (privacyResult.isSuccess) {
@@ -419,7 +419,7 @@ fun TranscriptionScreen(
                                         color = MaterialTheme.colorScheme.primary,
                                         style = MaterialTheme.typography.bodySmall
                                     )
-                                } else if (apiKey.isNullOrBlank()) {
+                                } else if (apiKeysList.isEmpty()) {
                                     Text(
                                         "Chat function requires Cloud Gemini API Key. (AI 追问功能需要云端 API 密钥)",
                                         color = MaterialTheme.colorScheme.error,
@@ -434,7 +434,7 @@ fun TranscriptionScreen(
                                         modifier = Modifier.weight(1f),
                                         placeholder = { Text("Ask a question...".zh(context, "提问...")) },
                                         shape = MaterialTheme.shapes.medium,
-                                        enabled = !isAsking && (metadata.transcript?.isNotEmpty() == true) && !useGeminiNano && !apiKey.isNullOrBlank()
+                                        enabled = !isAsking && (metadata.transcript?.isNotEmpty() == true) && !useGeminiNano && apiKeysList.isNotEmpty()
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     FilledIconButton(
@@ -444,7 +444,7 @@ fun TranscriptionScreen(
                                             isAsking = true
                                             coroutineScope.launch {
                                                 val transcriber = GeminiTranscriber(
-                                                    (apiKey ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                                                    apiKeysList,
                                                     modelName ?: "gemini-1.5-flash"
                                                 )
                                                 val result = transcriber.askQuestion(
@@ -466,7 +466,7 @@ fun TranscriptionScreen(
                                                 isAsking = false
                                             }
                                         },
-                                        enabled = chatQuery.isNotBlank() && !isAsking && !useGeminiNano && !apiKey.isNullOrBlank(),
+                                        enabled = chatQuery.isNotBlank() && !isAsking && !useGeminiNano && apiKeysList.isNotEmpty(),
                                         modifier = Modifier.size(52.dp)
                                     ) {
                                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Send", modifier = Modifier.size(24.dp))

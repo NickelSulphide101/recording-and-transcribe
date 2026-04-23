@@ -33,8 +33,8 @@ import java.util.Locale
  * Android 16 Gemini Nano (On-Device SLM) Integration.
  * Uses ML Kit Summarization and GenAI Speech Recognition APIs.
  */
-class GeminiNanoTranscriber(private val context: Context) {
-    
+class GeminiNanoTranscriber(context: Context) {
+    private val context = context.applicationContext
     private fun getSummarizerOptions() = SummarizerOptions.builder(context)
         .setOutputType(SummarizerOptions.OutputType.THREE_BULLETS)
         .build()

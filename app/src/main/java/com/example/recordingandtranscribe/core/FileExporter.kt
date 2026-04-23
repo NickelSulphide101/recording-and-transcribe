@@ -27,6 +27,21 @@ object FileExporter {
                 appendLine("-" * 10)
                 metadata.actionItems.forEach { appendLine("- $it") }
             }
+            if (metadata.tags.isNotEmpty()) {
+                appendLine("\nTags")
+                appendLine("-" * 10)
+                appendLine(metadata.tags.joinToString(", "))
+            }
+            if (metadata.keywords.isNotEmpty()) {
+                appendLine("\nKeywords")
+                appendLine("-" * 10)
+                appendLine(metadata.keywords.joinToString(", "))
+            }
+            if (metadata.emotionAnalysis != null) {
+                appendLine("\nEmotion Analysis")
+                appendLine("-" * 10)
+                appendLine(metadata.emotionAnalysis)
+            }
         }
         exportFile.writeText(content)
         return exportFile
@@ -91,6 +106,27 @@ object FileExporter {
             drawTextWrapped("Action Items", isBold = true)
             drawTextWrapped("----------")
             metadata.actionItems.forEach { drawTextWrapped("- $it") }
+        }
+
+        if (metadata.tags.isNotEmpty()) {
+            y += 20f
+            drawTextWrapped("Tags", isBold = true)
+            drawTextWrapped("----------")
+            drawTextWrapped(metadata.tags.joinToString(", "))
+        }
+
+        if (metadata.keywords.isNotEmpty()) {
+            y += 20f
+            drawTextWrapped("Keywords", isBold = true)
+            drawTextWrapped("----------")
+            drawTextWrapped(metadata.keywords.joinToString(", "))
+        }
+
+        if (metadata.emotionAnalysis != null) {
+            y += 20f
+            drawTextWrapped("Emotion Analysis", isBold = true)
+            drawTextWrapped("----------")
+            metadata.emotionAnalysis.lines().forEach { drawTextWrapped(it) }
         }
 
         pdfDocument.finishPage(page)

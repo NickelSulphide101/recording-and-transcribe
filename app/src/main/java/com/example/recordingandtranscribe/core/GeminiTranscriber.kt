@@ -127,14 +127,23 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
                     modelName = modelName,
                     apiKey = key
                 )
-                val chat = generativeModel.startChat(
-                    history = history.map { 
-                        com.google.ai.client.generativeai.type.content(it.role) { text(it.content) }
+                val chatHistory = history.mapIndexed { index, msg -> 
+                    com.google.ai.client.generativeai.type.content(msg.role) {
+                        if (index == 0 && msg.role == "user") {
+                            text("Context (Transcript of a recording):\n$transcript\n\n---\n\nUser Question: ${msg.content}")
+                        } else {
+                            text(msg.content)
+                        }
                     }
-                )
+                }
+                val chat = generativeModel.startChat(history = chatHistory)
                 
-                val fullPrompt = "Context (Transcript of a recording):\n$transcript\n\n---\n\nUser Question: $question"
-                val response = chat.sendMessage(fullPrompt)
+                val finalPrompt = if (history.isEmpty()) {
+                    "Context (Transcript of a recording):\n$transcript\n\n---\n\nUser Question: $question"
+                } else {
+                    question
+                }
+                val response = chat.sendMessage(finalPrompt)
                 val output = response.text
                 if (output != null) {
                     return@withContext Result.success(output)

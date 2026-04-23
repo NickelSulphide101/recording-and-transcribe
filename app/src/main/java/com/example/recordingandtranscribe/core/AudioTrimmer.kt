@@ -68,10 +68,19 @@ object AudioTrimmer {
                 sampleCount++
             }
 
-            if (muxerStarted) muxer.stop()
+            if (muxerStarted) {
+                try {
+                    muxer.stop()
+                } catch (e: Exception) {
+                    Log.e("AudioTrimmer", "Error stopping muxer: ${e.message}")
+                    outputFile.delete()
+                    return false
+                }
+            }
             return true
         } catch (e: Exception) {
             Log.e("AudioTrimmer", "Error trimming audio: ${e.message}")
+            outputFile.delete()
             return false
         } finally {
             extractor?.release()

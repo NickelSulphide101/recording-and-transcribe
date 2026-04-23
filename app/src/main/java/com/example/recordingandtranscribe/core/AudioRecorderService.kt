@@ -61,6 +61,7 @@ class AudioRecorderService : Service() {
     private var silenceStartTime: Long = 0
     private var skipSilenceEnabled = false
     private var isAutoPaused = false
+    private var isLocalMode = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
@@ -87,11 +88,14 @@ class AudioRecorderService : Service() {
     private fun startRecording() {
         if (_isRecording.value) return
 
+        startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+
         val settings = SettingsRepository(this)
         
         serviceScope.launch(Dispatchers.IO) {
             val bitrate = settings.bitrateFlow.first()
             skipSilenceEnabled = settings.skipSilenceFlow.first()
+            isLocalMode = settings.useGeminiNanoFlow.first()
             
             val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.ogg"
             val outputFile = File(filesDir, fileName)
@@ -99,6 +103,7 @@ class AudioRecorderService : Service() {
 
             launch(Dispatchers.Main) {
                 _liveTranscript.value = ""
+                finalizedTranscript = ""
                 startSpeechRecognition()
             }
                 
@@ -117,7 +122,6 @@ class AudioRecorderService : Service() {
                         _isRecording.value = true
                         _isPaused.value = false
                         isAutoPaused = false
-                        startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
                         startAmplitudeMonitoring()
                     }
                 } catch (e: Exception) {
@@ -133,6 +137,7 @@ class AudioRecorderService : Service() {
             try {
                 recorder?.pause()
                 _isPaused.value = true
+                speechRecognizer?.stopListening()
                 updateNotification()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -145,6 +150,7 @@ class AudioRecorderService : Service() {
             try {
                 recorder?.resume()
                 _isPaused.value = false
+                speechRecognizer?.startListening(getSpeechRecognizerIntent())
                 updateNotification()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -221,6 +227,16 @@ class AudioRecorderService : Service() {
 
     private var finalizedTranscript = ""
 
+    private fun getSpeechRecognizerIntent(): Intent {
+        return Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            if (isLocalMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                putExtra(android.speech.RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            }
+        }
+    }
+
     private fun startSpeechRecognition() {
         if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) return
         
@@ -238,10 +254,7 @@ class AudioRecorderService : Service() {
                             serviceScope.launch {
                                 kotlinx.coroutines.delay(1000)
                                 if (_isRecording.value && !_isPaused.value) {
-                                    startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                        putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                                    })
+                                    startListening(getSpeechRecognizerIntent())
                                 }
                             }
                         }
@@ -255,10 +268,7 @@ class AudioRecorderService : Service() {
                     }
                     // Restart listening for continuous flow
                     if (_isRecording.value && !_isPaused.value) {
-                        startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                        })
+                        startListening(getSpeechRecognizerIntent())
                     }
                 }
                 override fun onPartialResults(partialResults: android.os.Bundle?) {
@@ -270,10 +280,7 @@ class AudioRecorderService : Service() {
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
             })
             
-            startListening(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            })
+            startListening(getSpeechRecognizerIntent())
         }
     }
 
