@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,7 +38,18 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             isBiometricEnabled = settingsRepository.isBiometricEnabledFlow.first()
             if (isBiometricEnabled) {
-                showBiometricPrompt()
+                val biometricManager = BiometricManager.from(this@MainActivity)
+                val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
+                    showBiometricPrompt()
+                } else {
+                    Toast.makeText(
+                        applicationContext,
+                        "Biometric lock not available".zh(this@MainActivity, "生物识别锁当前不可用"),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    startApp()
+                }
             } else {
                 startApp()
             }

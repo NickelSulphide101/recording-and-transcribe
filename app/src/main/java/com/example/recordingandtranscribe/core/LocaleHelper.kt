@@ -14,8 +14,7 @@ object LocaleHelper {
         val localeManager = context.getSystemService(LocaleManager::class.java)
         val appLocales = localeManager.applicationLocales
         val effectiveLocales = if (!appLocales.isEmpty) appLocales else localeManager.systemLocales
-        
-        return effectiveLocales.get(0)?.language?.lowercase()?.startsWith("zh") == true
+        return !effectiveLocales.isEmpty && effectiveLocales.get(0)?.language?.lowercase()?.startsWith("zh") == true
     }
 }
 

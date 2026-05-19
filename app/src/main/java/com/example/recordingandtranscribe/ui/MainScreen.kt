@@ -90,7 +90,10 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
         launch(Dispatchers.IO) {
             recordings.forEach { file ->
                 if (!metadataCache.containsKey(file)) {
-                    metadataCache[file] = MetadataManager.loadMetadata(file)
+                    val meta = MetadataManager.loadMetadata(file)
+                    launch(Dispatchers.Main) {
+                        metadataCache[file] = meta
+                    }
                 }
             }
         }
@@ -194,10 +197,11 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                 input.copyTo(output)
                             }
                         }
-                        recordings = audioRecorder.getRecordings()
-                        // Ensure cache is updated for the new file
-                        coroutineScope.launch(Dispatchers.IO) {
-                            metadataCache[destFile] = MetadataManager.loadMetadata(destFile)
+                        val loadedRecordings = audioRecorder.getRecordings()
+                        val loadedMeta = MetadataManager.loadMetadata(destFile)
+                        launch(Dispatchers.Main) {
+                            recordings = loadedRecordings
+                            metadataCache[destFile] = loadedMeta
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -227,7 +231,8 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                     val currentF = fileToRename!!
                     val extension = if (currentF.name.endsWith(".m4a")) ".m4a" else ".ogg"
                     val finalName = if (newFileName.endsWith(extension)) newFileName else "$newFileName$extension"
-                    val newFile = File(currentF.parentFile, finalName)
+                    val sanitizedFinalName = File(finalName).name
+                    val newFile = File(currentF.parentFile, sanitizedFinalName)
                     if (newFile.exists()) {
                         android.widget.Toast.makeText(context, "文件名已存在", android.widget.Toast.LENGTH_SHORT).show()
                         return@FilledTonalButton
@@ -241,11 +246,12 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                         if (oldJsonFile.exists()) {
                             oldJsonFile.renameTo(File(currentF.parentFile, "${newFile.nameWithoutExtension}.json"))
                         }
-                        recordings = audioRecorder.getRecordings()
-                        // Refresh cache for the new file name
+                        // Refresh cache and recordings list off main thread
                         coroutineScope.launch(Dispatchers.IO) {
+                            val loadedRecordings = audioRecorder.getRecordings()
                             val newMeta = MetadataManager.loadMetadata(newFile)
                             launch(Dispatchers.Main) {
+                                recordings = loadedRecordings
                                 metadataCache.remove(currentF)
                                 metadataCache[newFile] = newMeta
                             }
@@ -293,20 +299,32 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
             },
             confirmButton = {
                 Button(onClick = {
-                    val startUs = (trimStart.toLongOrNull() ?: 0L) * 1_000_000L
-                    val endUs = (trimEnd.toLongOrNull() ?: 10L) * 1_000_000L
+                    val startSec = trimStart.toLongOrNull()
+                    val endSec = trimEnd.toLongOrNull()
+                    if (startSec == null || endSec == null || startSec < 0L || endSec <= startSec) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Invalid start or end time".zh(context, "无效的开始或结束时间"),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+                    val startUs = startSec * 1_000_000L
+                    val endUs = endSec * 1_000_000L
                     val inputFile = fileToTrim!!
                     val outputFile = File(inputFile.parentFile, "TRIM_${inputFile.name}")
                     coroutineScope.launch(Dispatchers.IO) {
                         val success = AudioTrimmer.trimAudio(inputFile, outputFile, startUs, endUs)
-                        if (success) {
+                        val loadedMeta = if (success) {
                             val originalMeta = MetadataManager.loadMetadata(inputFile)
                             MetadataManager.saveMetadata(outputFile, originalMeta)
-                        }
+                            MetadataManager.loadMetadata(outputFile)
+                        } else null
+                        val loadedRecordings = if (success) audioRecorder.getRecordings() else emptyList()
                         launch(Dispatchers.Main) {
-                            if (success) {
-                                metadataCache[outputFile] = MetadataManager.loadMetadata(outputFile)
-                                recordings = audioRecorder.getRecordings()
+                            if (success && loadedMeta != null) {
+                                metadataCache[outputFile] = loadedMeta
+                                recordings = loadedRecordings
                             }
                             fileToTrim = null
                         }

@@ -96,7 +96,7 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
     suspend fun generateKeywords(transcript: String): Result<List<String>> {
         val prompt = "Please list the top 5-10 important keywords or topics mentioned in this transcript. Return them separated by commas."
         return processText(transcript, prompt).map { resultText ->
-            resultText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            resultText.split(",").map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }
         }
     }
 
@@ -113,7 +113,7 @@ class GeminiTranscriber(private val apiKeys: List<String>, private val modelName
     suspend fun generateSmartTags(transcript: String): Result<List<String>> {
         val prompt = "Based on the above transcript, generate 3-5 short, one-word tags that categorize this content (e.g., Meeting, Idea, Interview, Personal, Lecture). Return them separated by commas."
         return processText(transcript, prompt).map { resultText ->
-            resultText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            resultText.split(",").map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }
         }
     }
 

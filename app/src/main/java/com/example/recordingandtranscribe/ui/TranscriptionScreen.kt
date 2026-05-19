@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Share
@@ -248,11 +249,11 @@ fun TranscriptionScreen(
                                 } else {
                                     transcriber?.generateSummary(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 }
-                                val actionItemsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val keywordsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val emotionResult = if (useGeminiNano) Result.success(null) else transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val actionItemsResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val keywordsResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val emotionResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 val privacyResult = if (useGeminiNano) Result.failure<String>(Exception("Not supported locally")) else transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val tagsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateSmartTags(currentTranscript) ?: Result.success(emptyList())
+                                val tagsResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateSmartTags(currentTranscript) ?: Result.failure(Exception("API Key required"))
 
                                 val newTranscript = if (privacyResult.isSuccess) {
                                     privacyResult.getOrNull() ?: currentTranscript
@@ -469,7 +470,7 @@ fun TranscriptionScreen(
                                         enabled = chatQuery.isNotBlank() && !isAsking && !useGeminiNano && apiKeysList.isNotEmpty(),
                                         modifier = Modifier.size(52.dp)
                                     ) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Send", modifier = Modifier.size(24.dp))
+                                        Icon(Icons.Default.Send, contentDescription = "Send".zh(context, "发送"), modifier = Modifier.size(24.dp))
                                     }
                                 }
                             }

@@ -23,8 +23,19 @@ object AudioTrimmer {
             val trackCount = extractor.trackCount
             if (trackCount <= 0) return false
 
-            extractor.selectTrack(0)
-            val format = extractor.getTrackFormat(0)
+            var audioTrackIndex = -1
+            for (i in 0 until trackCount) {
+                val trackFormat = extractor.getTrackFormat(i)
+                val mime = trackFormat.getString(MediaFormat.KEY_MIME)
+                if (mime?.startsWith("audio/") == true) {
+                    audioTrackIndex = i
+                    break
+                }
+            }
+            if (audioTrackIndex < 0) return false
+
+            extractor.selectTrack(audioTrackIndex)
+            val format = extractor.getTrackFormat(audioTrackIndex)
             
             var muxerStarted = false
             val outputFormat = if (outputFile.name.endsWith(".ogg", ignoreCase = true)) {
@@ -59,8 +70,11 @@ object AudioTrimmer {
                 if (sampleTime > endTimeUs) {
                     break
                 }
+                if (sampleTime < startTimeUs) {
+                    extractor.advance()
+                    continue
+                }
                 bufferInfo.presentationTimeUs = sampleTime - startTimeUs
-                if (bufferInfo.presentationTimeUs < 0) bufferInfo.presentationTimeUs = 0
                 
                 bufferInfo.flags = extractor.sampleFlags
                 muxer.writeSampleData(trackIndex, buffer, bufferInfo)
