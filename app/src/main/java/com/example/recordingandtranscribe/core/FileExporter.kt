@@ -53,6 +53,7 @@ object FileExporter {
         var pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create() // A4 size
         var page = pdfDocument.startPage(pageInfo)
         var canvas = page.canvas
+        var isPageFinished = false
         val paint = Paint().apply {
             textSize = 12f
             color = Color.BLACK
@@ -73,16 +74,20 @@ object FileExporter {
             }
             
             while (remainingText.isNotEmpty()) {
-                val count = paint.breakText(remainingText, true, maxWidth, null)
-                val chunk = remainingText.substring(0, count)
-                remainingText = remainingText.substring(count)
+                val count = paint.breakText(remainingText, true, maxWidth, null).coerceAtLeast(1)
+                val chunk = remainingText.substring(0, count.coerceAtMost(remainingText.length))
+                remainingText = remainingText.substring(chunk.length)
                 
                 if (y > 780f) {
-                    pdfDocument.finishPage(page)
+                    if (!isPageFinished) {
+                        pdfDocument.finishPage(page)
+                        isPageFinished = true
+                    }
                     pageNum++
                     pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
                     page = pdfDocument.startPage(pageInfo)
                     canvas = page.canvas
+                    isPageFinished = false
                     y = 50f
                 }
                 canvas.drawText(chunk, 50f, y, paint)
@@ -129,7 +134,10 @@ object FileExporter {
             metadata.emotionAnalysis.lines().forEach { drawTextWrapped(it) }
         }
 
-        pdfDocument.finishPage(page)
+        if (!isPageFinished) {
+            pdfDocument.finishPage(page)
+            isPageFinished = true
+        }
         
         val pdfFile = File(context.cacheDir, "${file.nameWithoutExtension}.pdf")
         FileOutputStream(pdfFile).use { out ->

@@ -21,7 +21,7 @@ class AudioPlayer {
     val duration = _duration.asStateFlow()
 
     private var progressJob: Job? = null
-    private val scope = CoroutineScope(Dispatchers.Main + Job())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     fun playFile(file: File, onCompletion: () -> Unit = {}) {
         stop()
@@ -35,35 +35,55 @@ class AudioPlayer {
                     onCompletion()
                 }
                 setOnPreparedListener { mp ->
-                    _duration.value = mp.duration
-                    mp.start()
-                    _isPlaying.value = true
-                    startProgressUpdate()
+                    try {
+                        _duration.value = mp.duration
+                        mp.start()
+                        _isPlaying.value = true
+                        startProgressUpdate()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        stop()
+                    }
+                }
+                setOnErrorListener { _, _, _ ->
+                    stop()
+                    true
                 }
                 prepareAsync()
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            stop()
         }
     }
 
     fun pause() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
-                _isPlaying.value = false
-                stopProgressUpdate()
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    it.pause()
+                    _isPlaying.value = false
+                    stopProgressUpdate()
+                }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            _isPlaying.value = false
+            stopProgressUpdate()
         }
     }
 
     fun resume() {
-        mediaPlayer?.let {
-            if (!it.isPlaying) {
-                it.start()
-                _isPlaying.value = true
-                startProgressUpdate()
+        try {
+            mediaPlayer?.let {
+                if (!it.isPlaying) {
+                    it.start()
+                    _isPlaying.value = true
+                    startProgressUpdate()
+                }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -72,38 +92,60 @@ class AudioPlayer {
     }
 
     fun seekRelative(millis: Int) {
-        mediaPlayer?.let {
-            val current = it.currentPosition
-            val newPos = (current + millis).coerceIn(0, it.duration)
-            it.seekTo(newPos)
-            _progress.value = newPos
+        try {
+            mediaPlayer?.let {
+                val current = it.currentPosition
+                val newPos = (current + millis).coerceIn(0, it.duration)
+                it.seekTo(newPos)
+                _progress.value = newPos
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
     fun seekTo(position: Int) {
-        mediaPlayer?.let {
-            val newPos = position.coerceIn(0, it.duration)
-            it.seekTo(newPos)
-            _progress.value = newPos
+        try {
+            mediaPlayer?.let {
+                val newPos = position.coerceIn(0, it.duration)
+                it.seekTo(newPos)
+                _progress.value = newPos
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
     fun stop() {
-        mediaPlayer?.release()
-        mediaPlayer = null
-        _currentFile.value = null
-        _isPlaying.value = false
-        _progress.value = 0
-        _duration.value = 0
-        stopProgressUpdate()
+        try {
+            mediaPlayer?.apply {
+                if (isPlaying) stop()
+                release()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            mediaPlayer = null
+            _currentFile.value = null
+            _isPlaying.value = false
+            _progress.value = 0
+            _duration.value = 0
+            stopProgressUpdate()
+        }
     }
 
     private fun startProgressUpdate() {
         progressJob?.cancel()
         progressJob = scope.launch {
             while (isActive && _isPlaying.value) {
-                mediaPlayer?.let {
-                    _progress.value = it.currentPosition
+                try {
+                    mediaPlayer?.let {
+                        if (it.isPlaying) {
+                            _progress.value = it.currentPosition
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore transient exceptions if player is stopping/releasing
                 }
                 delay(100)
             }
@@ -116,6 +158,6 @@ class AudioPlayer {
 
     fun release() {
         stop()
-        scope.cancel()
+        scope.coroutineContext.cancelChildren()
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -119,6 +120,54 @@ fun SettingsScreen(
                                 isSaved = false
                             }
                         )
+                    }
+
+                    if (currentUseGeminiNano) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        var isPreparing by remember { mutableStateOf(false) }
+                        var prepStatusMsg by remember { mutableStateOf<String?>(null) }
+                        var prepPercent by remember { mutableFloatStateOf(0f) }
+
+                        OutlinedButton(
+                            onClick = {
+                                isPreparing = true
+                                prepStatusMsg = "Checking AICore status...".zh(context, "正在检查 AICore 状态...")
+                                coroutineScope.launch {
+                                    val nano = com.example.recordingandtranscribe.core.GeminiNanoTranscriber(context)
+                                    val res = nano.checkAndPrepareModels { msg, percent ->
+                                        prepStatusMsg = msg
+                                        prepPercent = percent
+                                    }
+                                    if (res.isSuccess) {
+                                        prepStatusMsg = "Local AI models ready!".zh(context, "本地 AI 模型已就绪！")
+                                    } else {
+                                        prepStatusMsg = "Model check failed: ${res.exceptionOrNull()?.message}".zh(context, "检查失败：设备可能不支持 AICore")
+                                    }
+                                    isPreparing = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isPreparing
+                        ) {
+                            if (isPreparing) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("${prepStatusMsg ?: ""} (${prepPercent.toInt()}%)")
+                            } else {
+                                Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Check & Prepare Local AI Models".zh(context, "预热/检查本地 AI 模型"))
+                            }
+                        }
+                        
+                        if (!prepStatusMsg.isNullOrEmpty() && !isPreparing) {
+                            Text(
+                                prepStatusMsg!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                     }
                 }
             }

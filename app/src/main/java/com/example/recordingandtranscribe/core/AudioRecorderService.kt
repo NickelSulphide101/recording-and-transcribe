@@ -57,11 +57,12 @@ class AudioRecorderService : Service() {
 
     private var recorder: MediaRecorder? = null
     private var speechRecognizer: android.speech.SpeechRecognizer? = null
-    private var amplitudeTimer: Timer? = null
+    private var amplitudeJob: Job? = null
     private var silenceStartTime: Long = 0
     private var skipSilenceEnabled = false
     private var isAutoPaused = false
     private var isLocalMode = false
+    @Volatile private var isStartingOrRecording = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
@@ -86,48 +87,67 @@ class AudioRecorderService : Service() {
     }
 
     private fun startRecording() {
-        if (_isRecording.value) return
+        if (isStartingOrRecording) return
+        isStartingOrRecording = true
+        _isRecording.value = true
+        _isPaused.value = false
+        isAutoPaused = false
 
         startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
 
         val settings = SettingsRepository(this)
         
-        serviceScope.launch(Dispatchers.IO) {
-            val bitrate = settings.bitrateFlow.first()
-            skipSilenceEnabled = settings.skipSilenceFlow.first()
-            isLocalMode = settings.useGeminiNanoFlow.first()
+        serviceScope.launch {
+            val bitrate = withContext(Dispatchers.IO) { settings.bitrateFlow.first() }
+            skipSilenceEnabled = withContext(Dispatchers.IO) { settings.skipSilenceFlow.first() }
+            isLocalMode = withContext(Dispatchers.IO) { settings.useGeminiNanoFlow.first() }
             
             val fileName = "REC_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.ogg"
             val outputFile = File(filesDir, fileName)
             currentFile = outputFile
 
-            launch(Dispatchers.Main) {
-                _liveTranscript.value = ""
-                finalizedTranscript = ""
-                startSpeechRecognition()
+            _liveTranscript.value = ""
+            finalizedTranscript = ""
+            startSpeechRecognition()
+
+            // If stop had been requested while setting up speech recognition
+            if (!isStartingOrRecording) {
+                cleanupRecorder()
+                return@launch
             }
                 
-            recorder = MediaRecorder(this@AudioRecorderService).apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.OGG)
-                setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
-                setAudioEncodingBitRate(bitrate)
-                setAudioSamplingRate(16000)
-                setOutputFile(outputFile.absolutePath)
+            val newRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(this@AudioRecorderService)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
 
-                try {
+            try {
+                newRecorder.apply {
+                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                    setOutputFormat(MediaRecorder.OutputFormat.OGG)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
+                    setAudioEncodingBitRate(bitrate)
+                    setAudioSamplingRate(16000)
+                    setOutputFile(outputFile.absolutePath)
                     prepare()
                     start()
-                    launch(Dispatchers.Main) {
-                        _isRecording.value = true
-                        _isPaused.value = false
-                        isAutoPaused = false
-                        startAmplitudeMonitoring()
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    stopSelf()
                 }
+                recorder = newRecorder
+                
+                if (!isStartingOrRecording) {
+                    cleanupRecorder()
+                    return@launch
+                }
+                
+                startAmplitudeMonitoring()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                isStartingOrRecording = false
+                _isRecording.value = false
+                cleanupRecorder()
+                stopSelf()
             }
         }
     }
@@ -150,7 +170,9 @@ class AudioRecorderService : Service() {
             try {
                 recorder?.resume()
                 _isPaused.value = false
-                speechRecognizer?.startListening(getSpeechRecognizerIntent())
+                if (speechRecognizer != null) {
+                    speechRecognizer?.startListening(getSpeechRecognizerIntent())
+                }
                 updateNotification()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -159,70 +181,79 @@ class AudioRecorderService : Service() {
     }
 
     private fun startAmplitudeMonitoring() {
-        amplitudeTimer?.cancel()
-        amplitudeTimer = Timer()
-        amplitudeTimer?.scheduleAtFixedRate(timerTask {
-            if (_isRecording.value) {
+        amplitudeJob?.cancel()
+        amplitudeJob = serviceScope.launch {
+            while (isActive && _isRecording.value) {
                 try {
-                    // We can't get amplitude when paused on some Android versions, 
-                    // but on many we still can. If not, this is a best-effort.
-                    val amp = recorder?.maxAmplitude?.toFloat() ?: 0f
-                    _amplitude.value = amp
+                    val currentRec = recorder
+                    if (currentRec != null) {
+                        val amp = currentRec.maxAmplitude.toFloat()
+                        _amplitude.value = amp
 
-                    if (!_isPaused.value) {
-                        // Basic Silence Skipping
-                        if (amp < 500f) {
-                            if (silenceStartTime == 0L) silenceStartTime = System.currentTimeMillis()
-                            if (skipSilenceEnabled && System.currentTimeMillis() - silenceStartTime > 3000) {
-                                // Automatically pause if silent for > 3 seconds
-                                serviceScope.launch(Dispatchers.Main) {
+                        if (!_isPaused.value) {
+                            // Basic Silence Skipping
+                            if (amp < 500f) {
+                                if (silenceStartTime == 0L) silenceStartTime = System.currentTimeMillis()
+                                if (skipSilenceEnabled && System.currentTimeMillis() - silenceStartTime > 3000) {
+                                    // Automatically pause if silent for > 3 seconds
                                     isAutoPaused = true
                                     pauseRecording()
+                                    silenceStartTime = 0
                                 }
+                            } else {
                                 silenceStartTime = 0
                             }
-                        } else {
-                            silenceStartTime = 0
-                        }
-                    } else if (isAutoPaused && amp > 1000f) {
-                        // Auto-resume if sound detected
-                        serviceScope.launch(Dispatchers.Main) {
+                        } else if (isAutoPaused && amp > 1000f) {
+                            // Auto-resume if sound detected
                             isAutoPaused = false
                             resumeRecording()
                         }
                     }
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                    // Ignore transient exceptions during stop/pause transitions
+                }
+                delay(100)
             }
-        }, 0, 100)
+        }
     }
 
     private fun stopAmplitudeMonitoring() {
-        amplitudeTimer?.cancel()
-        amplitudeTimer = null
+        amplitudeJob?.cancel()
+        amplitudeJob = null
         _amplitude.value = 0f
         silenceStartTime = 0
     }
 
-    private fun stopRecording() {
-        if (!_isRecording.value) return
+    private fun cleanupRecorder() {
         try {
             speechRecognizer?.stopListening()
             speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
             speechRecognizer = null
+        }
+
+        try {
             recorder?.apply {
-                stop()
+                try { stop() } catch (e: Exception) {}
                 release()
             }
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
             recorder = null
-            _isRecording.value = false
-            _isPaused.value = false
-            stopAmplitudeMonitoring()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
         }
+    }
+
+    private fun stopRecording() {
+        isStartingOrRecording = false
+        _isRecording.value = false
+        _isPaused.value = false
+        stopAmplitudeMonitoring()
+        cleanupRecorder()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private var finalizedTranscript = ""
@@ -240,47 +271,57 @@ class AudioRecorderService : Service() {
     private fun startSpeechRecognition() {
         if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) return
         
-        speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this).apply {
-            setRecognitionListener(object : android.speech.RecognitionListener {
-                override fun onReadyForSpeech(params: android.os.Bundle?) {}
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() {}
-                override fun onError(error: Int) {
-                    if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                        // Restart if it times out, but with a delay to optimize performance during prolonged silence
-                        if (_isRecording.value && !_isPaused.value) {
-                            serviceScope.launch {
-                                kotlinx.coroutines.delay(1000)
-                                if (_isRecording.value && !_isPaused.value) {
-                                    startListening(getSpeechRecognizerIntent())
+        try {
+            speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this).apply {
+                setRecognitionListener(object : android.speech.RecognitionListener {
+                    override fun onReadyForSpeech(params: android.os.Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onError(error: Int) {
+                        if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                            if (_isRecording.value && !_isPaused.value && speechRecognizer != null) {
+                                serviceScope.launch {
+                                    delay(1000)
+                                    if (_isRecording.value && !_isPaused.value && speechRecognizer != null) {
+                                        try {
+                                            speechRecognizer?.startListening(getSpeechRecognizerIntent())
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                override fun onResults(results: android.os.Bundle?) {
-                    val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!matches.isNullOrEmpty()) {
-                        finalizedTranscript += (if (finalizedTranscript.isEmpty()) "" else " ") + matches[0]
-                        _liveTranscript.value = finalizedTranscript
+                    override fun onResults(results: android.os.Bundle?) {
+                        val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                        if (!matches.isNullOrEmpty()) {
+                            finalizedTranscript += (if (finalizedTranscript.isEmpty()) "" else " ") + matches[0]
+                            _liveTranscript.value = finalizedTranscript
+                        }
+                        if (_isRecording.value && !_isPaused.value && speechRecognizer != null) {
+                            try {
+                                speechRecognizer?.startListening(getSpeechRecognizerIntent())
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
                     }
-                    // Restart listening for continuous flow
-                    if (_isRecording.value && !_isPaused.value) {
-                        startListening(getSpeechRecognizerIntent())
+                    override fun onPartialResults(partialResults: android.os.Bundle?) {
+                        val matches = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                        if (!matches.isNullOrEmpty()) {
+                            _liveTranscript.value = finalizedTranscript + (if (finalizedTranscript.isEmpty()) "" else " ") + matches[0]
+                        }
                     }
-                }
-                override fun onPartialResults(partialResults: android.os.Bundle?) {
-                    val matches = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!matches.isNullOrEmpty()) {
-                        _liveTranscript.value = finalizedTranscript + (if (finalizedTranscript.isEmpty()) "" else " ") + matches[0]
-                    }
-                }
-                override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
-            })
-            
-            startListening(getSpeechRecognizerIntent())
+                    override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+                })
+                
+                startListening(getSpeechRecognizerIntent())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

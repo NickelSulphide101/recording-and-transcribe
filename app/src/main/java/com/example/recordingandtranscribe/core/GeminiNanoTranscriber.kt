@@ -41,8 +41,12 @@ class GeminiNanoTranscriber(context: Context) {
 
     /**
      * Generates a summary of the provided text using the on-device Gemini Nano model.
+     * Supports optional progress callback for model downloading.
      */
-    suspend fun generateOnDeviceSummary(text: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun generateOnDeviceSummary(
+        text: String,
+        onProgress: (Float) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext Result.failure(Exception("Input text is empty"))
         
         val summarizer = Summarization.getClient(getSummarizerOptions())
@@ -52,11 +56,21 @@ class GeminiNanoTranscriber(context: Context) {
             if (status != FeatureStatus.AVAILABLE) {
                 Log.d("GeminiNano", "Summarization model not available (status: $status). Starting download...")
                 summarizer.downloadFeature(object : DownloadCallback {
-                    override fun onDownloadStarted(bytesToDownload: Long) {}
-                    override fun onDownloadProgress(totalBytesDownloaded: Long) {}
-                    override fun onDownloadCompleted() {}
+                    override fun onDownloadStarted(bytesToDownload: Long) {
+                        onProgress(0f)
+                    }
+                    override fun onDownloadProgress(totalBytesDownloaded: Long) {
+                        // Estimate progress assuming standard ~100MB model size if total not available
+                        val approxTotal = 100_000_000L
+                        val percent = (totalBytesDownloaded.toFloat() / approxTotal * 100f).coerceIn(0f, 99f)
+                        onProgress(percent)
+                    }
+                    override fun onDownloadCompleted() {
+                        onProgress(100f)
+                    }
                     override fun onDownloadFailed(e: GenAiException) {}
                 }).await()
+                
                 // Re-check after download
                 val postDownloadStatus = summarizer.checkFeatureStatus().await()
                 if (postDownloadStatus != FeatureStatus.AVAILABLE) {
@@ -77,16 +91,20 @@ class GeminiNanoTranscriber(context: Context) {
     
     /**
      * Transcribes an audio file on-device using the GenAI-powered Speech Recognition API.
-     * Implements a fallback mechanism: Advanced (Gemini Nano) -> Basic (Traditional On-Device).
+     * Supports real-time partial results and download progress callbacks.
      */
-    suspend fun transcribeOnDevice(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun transcribeOnDevice(
+        audioFile: File,
+        onProgress: (Float) -> Unit = {},
+        onPartialResult: (String) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
         if (!audioFile.exists() || !audioFile.canRead()) {
             return@withContext Result.failure(Exception("Audio file is missing or unreadable."))
         }
         val configsToTry = listOf(
             // 1. Try Advanced mode with system locale
             SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.getDefault(),
-            // 2. Try Advanced mode with explicit Simplified Chinese (cmn-Hans-CN)
+            // 2. Try Advanced mode with explicit Simplified Chinese
             SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.SIMPLIFIED_CHINESE,
             SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.forLanguageTag("zh-CN"),
             SpeechRecognizerOptions.Mode.MODE_ADVANCED to Locale.forLanguageTag("zh-Hans-CN"),
@@ -110,7 +128,7 @@ class GeminiNanoTranscriber(context: Context) {
                 }
                 val recognizer = SpeechRecognition.getClient(options)
                 try {
-                    val status = recognizer.checkStatus()
+                    val status = recognizer.checkStatus().await()
                     
                     if (status == FeatureStatus.UNAVAILABLE) {
                         Log.d("GeminiNano", "Mode $mode with $locale is unavailable. Trying next config...")
@@ -119,18 +137,29 @@ class GeminiNanoTranscriber(context: Context) {
 
                     if (status != FeatureStatus.AVAILABLE) {
                         Log.d("GeminiNano", "Model download needed for $mode. Starting...")
-                        val terminalStatus = recognizer.download().first {
-                            it is DownloadStatus.DownloadCompleted || it is DownloadStatus.DownloadFailed
+                        recognizer.download().collect { downloadStatus ->
+                            when (downloadStatus) {
+                                is DownloadStatus.DownloadStarted -> onProgress(0f)
+                                is DownloadStatus.DownloadProgress -> {
+                                    val approxTotal = 150_000_000L
+                                    val percent = (downloadStatus.totalBytesDownloaded.toFloat() / approxTotal * 100f).coerceIn(0f, 99f)
+                                    onProgress(percent)
+                                }
+                                is DownloadStatus.DownloadCompleted -> onProgress(100f)
+                                is DownloadStatus.DownloadFailed -> {
+                                    lastError = "Download failed: ${downloadStatus.e.message}"
+                                }
+                            }
                         }
 
-                        if (terminalStatus is DownloadStatus.DownloadFailed) {
-                            lastError = "Download failed: ${terminalStatus.e.message}"
-                            Log.w("GeminiNano", "Download failed for $mode: $lastError")
+                        val recheckStatus = recognizer.checkStatus().await()
+                        if (recheckStatus != FeatureStatus.AVAILABLE) {
+                            Log.w("GeminiNano", "Download failed or model unavailable for $mode: $lastError")
                             continue
                         }
                     }
 
-                    // If we reach here, model is available or downloaded successfully
+                    // Model is available or downloaded successfully
                     ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
                         val request = speechRecognizerRequest {
                             audioSource = AudioSource.fromPfd(pfd)
@@ -149,10 +178,12 @@ class GeminiNanoTranscriber(context: Context) {
                                             accumulatedText += response.text + " "
                                             currentPartial = ""
                                             finalTranscript = accumulatedText
+                                            onPartialResult(finalTranscript.trim())
                                         }
                                         is SpeechRecognizerResponse.PartialTextResponse -> {
                                             currentPartial = response.text
                                             finalTranscript = accumulatedText + currentPartial
+                                            onPartialResult(finalTranscript.trim())
                                         }
                                         is SpeechRecognizerResponse.ErrorResponse -> {
                                             recognitionError = response.e
@@ -184,5 +215,72 @@ class GeminiNanoTranscriber(context: Context) {
         }
 
         Result.failure(Exception("On-device transcription failed even after fallbacks. Last error: $lastError. This device might not support the required AI models."))
+    }
+
+    /**
+     * Checks availability and pre-warms on-device Gemini Nano models.
+     */
+    suspend fun checkAndPrepareModels(
+        onProgress: (statusMsg: String, percent: Float) -> Unit = { _, _ -> }
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            onProgress("Checking Summarization model...", 0f)
+            val summarizer = Summarization.getClient(getSummarizerOptions())
+            try {
+                val sumStatus = summarizer.checkFeatureStatus().await()
+                if (sumStatus != FeatureStatus.AVAILABLE) {
+                    onProgress("Downloading Summarization model...", 10f)
+                    summarizer.downloadFeature(object : DownloadCallback {
+                        override fun onDownloadStarted(bytesToDownload: Long) {}
+                        override fun onDownloadProgress(totalBytesDownloaded: Long) {
+                            val percent = (totalBytesDownloaded.toFloat() / 100_000_000L * 50f).coerceIn(10f, 50f)
+                            onProgress("Downloading Summarization model...", percent)
+                        }
+                        override fun onDownloadCompleted() {
+                            onProgress("Summarization model ready.", 50f)
+                        }
+                        override fun onDownloadFailed(e: GenAiException) {}
+                    }).await()
+                } else {
+                    onProgress("Summarization model ready.", 50f)
+                }
+            } finally {
+                summarizer.close()
+            }
+
+            onProgress("Checking Speech Recognition model...", 50f)
+            val options = speechRecognizerOptions {
+                this.locale = Locale.getDefault()
+                this.preferredMode = SpeechRecognizerOptions.Mode.MODE_ADVANCED
+            }
+            val recognizer = SpeechRecognition.getClient(options)
+            try {
+                val recStatus = recognizer.checkStatus().await()
+                if (recStatus != FeatureStatus.AVAILABLE) {
+                    onProgress("Downloading Speech Recognition model...", 60f)
+                    recognizer.download().collect { downloadStatus ->
+                        when (downloadStatus) {
+                            is DownloadStatus.DownloadProgress -> {
+                                val percent = 50f + (downloadStatus.totalBytesDownloaded.toFloat() / 150_000_000L * 50f).coerceIn(0f, 49f)
+                                onProgress("Downloading Speech Recognition model...", percent)
+                            }
+                            is DownloadStatus.DownloadCompleted -> {
+                                onProgress("All Local AI models ready!", 100f)
+                            }
+                            else -> {}
+                        }
+                    }
+                } else {
+                    onProgress("All Local AI models ready!", 100f)
+                }
+            } finally {
+                recognizer.close()
+            }
+
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e("GeminiNano", "Error preparing local AI models: ${e.message}")
+            Result.failure(e)
+        }
     }
 }

@@ -119,9 +119,16 @@ fun TranscriptionScreen(
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text("File Size".zh(context, "文件大小"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        }
+                        if (useGeminiNano) {
+                            SuggestionChip(
+                                onClick = {},
+                                label = { Text("⚡ Local AI".zh(context, "⚡ 本地 AI"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                            )
                         }
                     }
                     
@@ -178,7 +185,16 @@ fun TranscriptionScreen(
                                 val nanoTranscriber = GeminiNanoTranscriber(context)
                                 
                                 val transcriptResult = if (useGeminiNano) {
-                                    nanoTranscriber.transcribeOnDevice(file)
+                                    nanoTranscriber.transcribeOnDevice(
+                                        file,
+                                        onProgress = { pct ->
+                                            downloadProgressMsg = "Downloading AI Model (${pct.toInt()}%)...".zh(context, "正在下载 AI 模型 (${pct.toInt()}%)...")
+                                        },
+                                        onPartialResult = { partialText ->
+                                            downloadProgressMsg = "Transcribing...".zh(context, "正在转录...")
+                                            metadata = metadata.copy(transcript = partialText)
+                                        }
+                                    )
                                 } else {
                                     transcriber?.transcribeAudio(file) ?: Result.failure(Exception("API Key required"))
                                 }
@@ -233,7 +249,16 @@ fun TranscriptionScreen(
                                 var currentTranscript = metadata.transcript ?: ""
                                 if (currentTranscript.isEmpty()) {
                                     val transcriptResult = if (useGeminiNano) {
-                                        nanoTranscriber.transcribeOnDevice(file)
+                                        nanoTranscriber.transcribeOnDevice(
+                                            file,
+                                            onProgress = { pct ->
+                                                downloadProgressMsg = "Downloading AI Model (${pct.toInt()}%)...".zh(context, "正在下载 AI 模型 (${pct.toInt()}%)...")
+                                            },
+                                            onPartialResult = { partialText ->
+                                                downloadProgressMsg = "Transcribing...".zh(context, "正在转录...")
+                                                metadata = metadata.copy(transcript = partialText)
+                                            }
+                                        )
                                     } else {
                                         transcriber?.transcribeAudio(file) ?: Result.failure(Exception("API Key required"))
                                     }
@@ -245,15 +270,20 @@ fun TranscriptionScreen(
                                 }
                                 
                                 val summaryResult = if (useGeminiNano) {
-                                    nanoTranscriber.generateOnDeviceSummary(currentTranscript)
+                                    nanoTranscriber.generateOnDeviceSummary(
+                                        currentTranscript,
+                                        onProgress = { pct ->
+                                            downloadProgressMsg = "Downloading AI Model (${pct.toInt()}%)...".zh(context, "正在下载 AI 模型 (${pct.toInt()}%)...")
+                                        }
+                                    )
                                 } else {
                                     transcriber?.generateSummary(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 }
-                                val actionItemsResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val keywordsResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val emotionResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val actionItemsResult = if (useGeminiNano) Result.success(listOf("Local AI mode: Action items extraction requires Cloud Gemini API Key.".zh(context, "本地 AI 模式：任务提取需配置云端 Gemini API"))) else transcriber?.generateActionItems(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val keywordsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateKeywords(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val emotionResult = if (useGeminiNano) Result.success("Local AI mode: Emotion analysis requires Cloud Gemini API Key.".zh(context, "本地 AI 模式：情感分析需配置云端 Gemini API")) else transcriber?.generateEmotionAnalysis(currentTranscript) ?: Result.failure(Exception("API Key required"))
                                 val privacyResult = if (useGeminiNano) Result.failure<String>(Exception("Not supported locally")) else transcriber?.generatePrivacyMaskedTranscript(currentTranscript) ?: Result.failure(Exception("API Key required"))
-                                val tagsResult = if (useGeminiNano) Result.failure(Exception("Not supported locally")) else transcriber?.generateSmartTags(currentTranscript) ?: Result.failure(Exception("API Key required"))
+                                val tagsResult = if (useGeminiNano) Result.success(emptyList()) else transcriber?.generateSmartTags(currentTranscript) ?: Result.failure(Exception("API Key required"))
 
                                 val newTranscript = if (privacyResult.isSuccess) {
                                     privacyResult.getOrNull() ?: currentTranscript
@@ -264,11 +294,11 @@ fun TranscriptionScreen(
                                 val newMetadata = metadata.copy(
                                     transcript = newTranscript,
                                     summary = summaryResult.getOrNull() ?: metadata.summary,
-                                    actionItems = actionItemsResult.getOrNull() ?: metadata.actionItems,
-                                    keywords = keywordsResult.getOrNull() ?: metadata.keywords,
-                                    emotionAnalysis = emotionResult.getOrNull() ?: metadata.emotionAnalysis,
+                                    actionItems = if (actionItemsResult.isSuccess) actionItemsResult.getOrNull() ?: emptyList() else metadata.actionItems,
+                                    keywords = if (keywordsResult.isSuccess) keywordsResult.getOrNull() ?: emptyList() else metadata.keywords,
+                                    emotionAnalysis = if (emotionResult.isSuccess) emotionResult.getOrNull() else metadata.emotionAnalysis,
                                     isPrivacyMasked = privacyResult.isSuccess,
-                                    tags = tagsResult.getOrNull() ?: metadata.tags
+                                    tags = if (tagsResult.isSuccess) (metadata.tags + (tagsResult.getOrNull() ?: emptyList())).distinct() else metadata.tags
                                 )
                                 metadata = newMetadata
                                 MetadataManager.saveMetadata(file, newMetadata)

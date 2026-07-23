@@ -707,16 +707,15 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                         if (currentFile == file && isPlaying) {
                                             Icon(Icons.Default.GraphicEq, contentDescription = "Playing".zh(context, "正在播放"), tint = MaterialTheme.colorScheme.primary)
                                         } else {
-                                            Icon(Icons.Default.AudioFile, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                },
-                                trailingContent = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(onClick = {
                                             val newMeta = mData.copy(isFavorite = !mData.isFavorite)
-                                            MetadataManager.saveMetadata(file, newMeta)
-                                            metadataCache[file] = newMeta
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                MetadataManager.saveMetadata(file, newMeta)
+                                                launch(Dispatchers.Main) {
+                                                    metadataCache[file] = newMeta
+                                                }
+                                            }
                                         }) {
                                             Icon(
                                                 if (mData.isFavorite) Icons.Default.Star else Icons.Default.StarOutline,
@@ -760,9 +759,13 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                     leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
                                                     onClick = {
                                                         expanded = false
-                                                        val m = MetadataManager.loadMetadata(file)
-                                                        val pdf = FileExporter.exportToPdf(context, file, m)
-                                                        if (pdf != null) FileExporter.shareFile(context, pdf)
+                                                        coroutineScope.launch(Dispatchers.IO) {
+                                                            val m = MetadataManager.loadMetadata(file)
+                                                            val pdf = FileExporter.exportToPdf(context, file, m)
+                                                            launch(Dispatchers.Main) {
+                                                                if (pdf != null) FileExporter.shareFile(context, pdf)
+                                                            }
+                                                        }
                                                     }
                                                 )
                                                 DropdownMenuItem(
@@ -792,30 +795,40 @@ fun MainScreen(navController: NavController, audioRecorder: AudioRecorder) {
                                                         if (currentFile == file) {
                                                             audioPlayer.stop()
                                                         }
-                                                        mData.photoUris.forEach { uriStr ->
-                                                            try {
-                                                                val uri = android.net.Uri.parse(uriStr)
-                                                                val fileName = uri.lastPathSegment ?: ""
-                                                                if ((fileName.startsWith("photo_") || fileName.startsWith("imported_img_")) && fileName.endsWith(".jpg")) {
-                                                                    val photoFile = File(context.cacheDir, fileName)
-                                                                    if (photoFile.exists()) photoFile.delete()
-                                                                }
-                                                            } catch (e: Exception) { }
+                                                        coroutineScope.launch(Dispatchers.IO) {
+                                                            mData.photoUris.forEach { uriStr ->
+                                                                try {
+                                                                    val uri = android.net.Uri.parse(uriStr)
+                                                                    val fileName = uri.lastPathSegment ?: ""
+                                                                    if ((fileName.startsWith("photo_") || fileName.startsWith("imported_img_")) && fileName.endsWith(".jpg")) {
+                                                                        val photoFile = File(context.cacheDir, fileName)
+                                                                        if (photoFile.exists()) photoFile.delete()
+                                                                    }
+                                                                } catch (e: Exception) { }
+                                                            }
+                                                            val txtFile = File(file.parentFile, "${file.nameWithoutExtension}.txt")
+                                                            if (txtFile.exists()) txtFile.delete()
+                                                            val jsonFile = File(file.parentFile, "${file.nameWithoutExtension}.json")
+                                                            if (jsonFile.exists()) jsonFile.delete()
+                                                            
+                                                            // Clean up exported files in cache to prevent PII leaks
+                                                            val txtCacheFile = File(context.cacheDir, "${file.nameWithoutExtension}.txt")
+                                                            if (txtCacheFile.exists()) txtCacheFile.delete()
+                                                            val pdfCacheFile = File(context.cacheDir, "${file.nameWithoutExtension}.pdf")
+                                                            if (pdfCacheFile.exists()) pdfCacheFile.delete()
+                                                            
+                                                            file.delete()
+                                                            val loadedRecordings = audioRecorder.getRecordings()
+                                                            launch(Dispatchers.Main) {
+                                                                metadataCache.remove(file)
+                                                                recordings = loadedRecordings
+                                                            }
                                                         }
-                                                        val txtFile = File(file.parentFile, "${file.nameWithoutExtension}.txt")
-                                                        if (txtFile.exists()) txtFile.delete()
-                                                        val jsonFile = File(file.parentFile, "${file.nameWithoutExtension}.json")
-                                                        if (jsonFile.exists()) jsonFile.delete()
-                                                        
-                                                        // Clean up exported files in cache to prevent PII leaks
-                                                        val txtCacheFile = File(context.cacheDir, "${file.nameWithoutExtension}.txt")
-                                                        if (txtCacheFile.exists()) txtCacheFile.delete()
-                                                        val pdfCacheFile = File(context.cacheDir, "${file.nameWithoutExtension}.pdf")
-                                                        if (pdfCacheFile.exists()) pdfCacheFile.delete()
-                                                        
-                                                        file.delete()
-                                                        metadataCache.remove(file)
-                                                        recordings = audioRecorder.getRecordings()
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }                                                      recordings = audioRecorder.getRecordings()
                                                     }
                                                 )
                                             }

@@ -26,34 +26,74 @@ import kotlinx.coroutines.runBlocking
 class MainActivity : FragmentActivity() {
 
     private lateinit var settingsRepository: SettingsRepository
-    private var isBiometricEnabled = false
+    private var isAuthenticated = mutableStateOf(false)
+    private var isAuthRequired = mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        if (savedInstanceState?.getBoolean("isAuthenticated") == true) {
+            isAuthenticated.value = true
+            isAuthRequired.value = false
+        }
+
         settingsRepository = SettingsRepository(this)
 
-        // Fetch biometric setting asynchronously and then decide
-        lifecycleScope.launch {
-            isBiometricEnabled = settingsRepository.isBiometricEnabledFlow.first()
-            if (isBiometricEnabled) {
-                val biometricManager = BiometricManager.from(this@MainActivity)
-                val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-                    showBiometricPrompt()
-                } else {
-                    Toast.makeText(
-                        applicationContext,
-                        "Biometric lock not available".zh(this@MainActivity, "生物识别锁当前不可用"),
-                        Toast.LENGTH_LONG
-                    ).show()
-                    startApp()
+        setContent {
+            RecordingAndTranscribeTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val authState by isAuthenticated
+                    val isRequired by isAuthRequired
+
+                    if (authState || !isRequired) {
+                        AppNavigation()
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            androidx.compose.material3.Text(
+                                "Authenticating...".zh(this@MainActivity, "身份验证中..."),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
                 }
-            } else {
-                startApp()
             }
         }
+
+        if (!isAuthenticated.value) {
+            lifecycleScope.launch {
+                val enabled = settingsRepository.isBiometricEnabledFlow.first()
+                if (enabled) {
+                    val biometricManager = BiometricManager.from(this@MainActivity)
+                    val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                    if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
+                        showBiometricPrompt()
+                    } else {
+                        Toast.makeText(
+                            applicationContext,
+                            "Biometric lock not available".zh(this@MainActivity, "生物识别锁当前不可用"),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        isAuthRequired.value = false
+                        isAuthenticated.value = true
+                    }
+                } else {
+                    isAuthRequired.value = false
+                    isAuthenticated.value = true
+                }
+            }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean("isAuthenticated", isAuthenticated.value)
     }
 
     private fun showBiometricPrompt() {
@@ -62,13 +102,18 @@ class MainActivity : FragmentActivity() {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    startApp()
+                    isAuthenticated.value = true
+                    isAuthRequired.value = false
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
-                    Toast.makeText(applicationContext, errString, Toast.LENGTH_SHORT).show()
-                    finish() // Close app if auth fails or is cancelled
+                    if (errorCode != BiometricPrompt.ERROR_CANCELED && errorCode != BiometricPrompt.ERROR_USER_CANCELED) {
+                        Toast.makeText(applicationContext, errString, Toast.LENGTH_SHORT).show()
+                    }
+                    if (!isAuthenticated.value) {
+                        finish()
+                    }
                 }
 
                 override fun onAuthenticationFailed() {
@@ -83,18 +128,5 @@ class MainActivity : FragmentActivity() {
             .build()
 
         biometricPrompt.authenticate(promptInfo)
-    }
-
-    private fun startApp() {
-        setContent {
-            RecordingAndTranscribeTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    AppNavigation()
-                }
-            }
-        }
     }
 }

@@ -70,13 +70,15 @@ object AudioTrimmer {
                 if (sampleTime > endTimeUs) {
                     break
                 }
-                if (sampleTime < startTimeUs) {
+                val flags = extractor.sampleFlags
+                val isCodecConfig = (flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+
+                if (sampleTime < startTimeUs && !isCodecConfig) {
                     extractor.advance()
                     continue
                 }
-                bufferInfo.presentationTimeUs = sampleTime - startTimeUs
-                
-                bufferInfo.flags = extractor.sampleFlags
+                bufferInfo.presentationTimeUs = if (sampleTime >= startTimeUs) sampleTime - startTimeUs else 0L
+                bufferInfo.flags = flags
                 muxer.writeSampleData(trackIndex, buffer, bufferInfo)
                 extractor.advance()
                 sampleCount++

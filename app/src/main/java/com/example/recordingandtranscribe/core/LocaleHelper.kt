@@ -11,10 +11,14 @@ object LocaleHelper {
      * If not Chinese, defaults to the base English language.
      */
     fun isChinese(context: Context): Boolean {
-        val localeManager = context.getSystemService(LocaleManager::class.java)
-        val appLocales = localeManager.applicationLocales
-        val effectiveLocales = if (!appLocales.isEmpty) appLocales else localeManager.systemLocales
-        return !effectiveLocales.isEmpty && effectiveLocales.get(0)?.language?.lowercase()?.startsWith("zh") == true
+        try {
+            val localeManager = context.getSystemService(LocaleManager::class.java) ?: return true
+            val appLocales = localeManager.applicationLocales
+            val effectiveLocales = if (appLocales != null && !appLocales.isEmpty) appLocales else localeManager.systemLocales
+            return effectiveLocales != null && !effectiveLocales.isEmpty && effectiveLocales.get(0)?.language?.lowercase()?.startsWith("zh") == true
+        } catch (e: Exception) {
+            return true
+        }
     }
 }
 
